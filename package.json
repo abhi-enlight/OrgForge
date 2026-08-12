@@ -1,0 +1,30 @@
+{
+  "name": "unified-forge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Forge — unified Enlight Lab platform (Agentforge + OrgForge) per docs/architecture/unification_plan.md",
+  "workspaces": [
+    "packages/*",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
+    "test": "npm run test --workspaces --if-present",
+    "test:auth": "npm test --workspace=@forge/auth",
+    "test:org-connections": "npm test --workspace=@forge/org-connections",
+    "dev:api": "FORGE_UNIFIED_API=on FORGE_MOUNT_AGENTFORGE=on npm run dev --workspace=@forge/api",
+    "start:api": "FORGE_UNIFIED_API=on FORGE_MOUNT_AGENTFORGE=on npm run start --workspace=@forge/api",
+    "dev:web": "npm run dev --workspace=@forge/web",
+    "build:web": "npm run build --workspace=@forge/web",
+    "lint:web": "npm run lint --workspace=@forge/web",
+    "typecheck:web": "npm run typecheck --workspace=@forge/web"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.4"
+  }
+}

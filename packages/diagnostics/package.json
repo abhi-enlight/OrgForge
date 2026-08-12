@@ -1,0 +1,14 @@
+{
+  "name": "@forge/diagnostics",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Forge unified org-health diagnostics: Agentforge pre-flight port + server-side 24h cache (plan §12.4)",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node --test --test-reporter spec 'src/**/*.test.js'"
+  }
+}

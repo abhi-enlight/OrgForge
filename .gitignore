@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Next.js (frontend)
+.next/
+out/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Env (real secrets; keep .env.example committed)
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+# Supabase
+supabase/.temp/
+
+# Test artifacts
+coverage/
+test-results/
+playwright-report/
+
+# Tooling / agent session folders
+.agents/
+.freebuff/
+tasks/
+
+Notes.md

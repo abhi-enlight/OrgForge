@@ -1,0 +1,17 @@
+{
+  "name": "@forge/org-connections",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Forge unified org-connection store: encrypted credentials, refresh dedup, legacy re-link",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node --test --test-reporter spec 'src/**/*.test.js'"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2"
+  }
+}
