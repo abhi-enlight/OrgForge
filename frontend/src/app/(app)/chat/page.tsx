@@ -206,19 +206,29 @@ export default function ChatPage() {
       // An explicit org_change pin is the user's deliberate choice and is
       // never gated; a `clarify` verdict flows through (the server asks).
       let sendCapability: CapabilityPin = null;
+      let sendCapabilitySource: 'client' | 'readiness_gate' | undefined;
       if (agentsUnavailable && safePin !== 'org_change') {
         const verdict = classifyWithStub(text);
         if (verdict.capability === 'agent') {
+          // Richer block notice (type gate_block): an amber card with the
+          // cause-aware reason AND a Fix in Settings link — see
+          // MessageBubble's gate_block branch.
           appendMessage({
             id: makeId(),
             role: 'assistant',
             content: `Agent building isn't available in this org — ${agentsUnavailableHint(readiness.diag)}. I stopped this request before it ran.`,
-            type: 'error',
+            type: 'gate_block',
+            summary: "Agent building isn't available",
           });
           return;
         }
         if (verdict.capability === 'both') {
           sendCapability = 'org_change';
+          // Mark the send as readiness-gated so the server logs it to
+          // routing_log (capability: org_change, override readiness_gate) —
+          // the routed-away agent half must stay auditable even though the
+          // client made the routing decision.
+          sendCapabilitySource = 'readiness_gate';
           appendMessage({
             id: makeId(),
             role: 'assistant',
@@ -241,6 +251,7 @@ export default function ChatPage() {
             message: text,
             orgId: org.id,
             capability: sendCapability ?? undefined,
+            capabilitySource: sendCapabilitySource,
             pinned: safePin ?? undefined,
             sessionId: sessionIdRef.current ?? undefined,
             file: overridePrompt ? undefined : (attachment ?? undefined),

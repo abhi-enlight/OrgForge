@@ -36,6 +36,10 @@ export interface ChatStreamRequest {
   orgId: string;
   /** Client-routed capability — authoritative when present (chat/stream route). */
   capability?: 'agent' | 'org_change' | 'both' | 'clarify';
+  /** Why the client supplied `capability`. `'readiness_gate'` marks a send
+   *  whose agent half was routed away because the org can't run agents — the
+   *  server logs it to routing_log so the block is auditable. */
+  capabilitySource?: 'client' | 'readiness_gate';
   /** UI-chip pin — biases routeIntent (bypasses the classifier, plan §7.1). */
   pinned?: 'agent' | 'org_change' | 'both' | 'clarify';
   sessionId?: string;
@@ -80,6 +84,7 @@ export async function streamChat(
     form.append('message', fields.message);
     form.append('orgId', fields.orgId);
     if (fields.capability) form.append('capability', fields.capability);
+    if (fields.capabilitySource) form.append('capabilitySource', fields.capabilitySource);
     if (fields.pinned) form.append('pinned', fields.pinned);
     if (fields.sessionId) form.append('sessionId', fields.sessionId);
     body = form;

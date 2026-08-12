@@ -25,6 +25,11 @@ const bodySchema = z.object({
   // when present. Absent ⇒ the stream classifies itself (defense in depth for
   // direct callers) and logs the decision to forge.routing_log.
   capability: z.enum(['agent', 'org_change', 'both', 'clarify']).optional(),
+  // Why the client supplied `capability`. Client-routed turns are normally
+  // NOT logged (the client made the decision), but a readiness-gate downgrade
+  // is a BLOCKED agent send and must stay auditable: the server logs it as
+  // the executed route (override_source 'readiness_gate').
+  capabilitySource: z.enum(['client', 'readiness_gate']).optional(),
   pinned: z.enum(['agent', 'org_change', 'both', 'clarify']).optional(),
   sessionId: z.string().min(1).max(200).optional(),
 });
@@ -53,6 +58,21 @@ function agentsGateReason(diag) {
 /** Plain-JSON 403 body for a refused pure-agent request. */
 function agentsUnavailableError(diag) {
   return `Agent building is unavailable in this org. ${agentsGateReason(diag)}. Org changes still work.`;
+}
+
+/**
+ * Encodes the agents gate's cause into the routing_log `override_source` so
+ * blocked sends are auditable WITHOUT a schema migration (routing_log has no
+ * reason column — only override_source is free text):
+ *   readiness_gate | readiness_gate:package_missing |
+ *   readiness_gate:settings_disabled | readiness_gate:license
+ */
+function gateOverrideSource(diag) {
+  const c = diag?.checks || {};
+  if (c.package?.installed === false) return 'readiness_gate:package_missing';
+  if (c.settings?.agentforceEnabled === false) return 'readiness_gate:settings_disabled';
+  if (c.license?.supported === false) return 'readiness_gate:license';
+  return 'readiness_gate';
 }
 
 // Legacy multer pipeline (Agentforge src/index.js): memory storage, 10MB cap,
@@ -172,11 +192,41 @@ export function createChatStreamRouter({
       if (!parsed.success) {
         return res.status(400).json({ error: 'Validation failed', issues: parsed.error.errors });
       }
-      const { message, orgId, capability: routedCapability, pinned, sessionId } = parsed.data;
+      const { message, orgId, capability: routedCapability, capabilitySource, pinned, sessionId } = parsed.data;
       // Always tenant-scoped: the verified userId is embedded unconditionally so
       // a shared org can't cross-collide conversation sessions (orgId is not
       // unique per user).
       const sessionKey = `${req.user.id}|${orgId}|${sessionId || 'default'}`;
+
+      // Shared routing_log writer (S-2): the audit trail for every routed
+      // turn — classifier decisions AND readiness-gate blocks/downgrades. A
+      // missing table (migration 008 pending) is skipped with a warning; ANY
+      // other DB error fails loudly — a real DB bug must surface, not be
+      // swallowed (same contract as the original classifier-path write).
+      const logRouting = async (capability, overrideSource, confidence) => {
+        try {
+          const { error: logError } = await db.from('routing_log').insert({
+            user_id: req.user.id,
+            prompt_hash: hashPrompt(message),
+            capability,
+            confidence,
+            override_source: overrideSource,
+          });
+          if (logError) {
+            if (isMissingTableError(logError)) {
+              console.warn('[chat/stream] routing_log skipped (migration 008 not applied?):', logError.message);
+            } else {
+              throw new Error(`routing_log write failed: ${logError.message}`);
+            }
+          }
+        } catch (logErr) {
+          if (isMissingTableError(logErr)) {
+            console.warn('[chat/stream] routing_log skipped (migration 008 not applied?):', logErr.message);
+          } else {
+            throw logErr;
+          }
+        }
+      };
 
       // ── 0. Attachment (legacy multer parity) ───────────────────────────
       // Documents: extracted text is injected into the ENGINE prompt (the
@@ -215,34 +265,17 @@ export function createChatStreamRouter({
       let decision;
       if (routedCapability) {
         decision = { capability: routedCapability, confidence: 1, overrideSource: 'client' };
+        // Client-routed turns are normally not logged (the client made the
+        // decision), but a readiness-gate downgrade (frontend routed a `both`
+        // request's org half away) is a BLOCKED agent send — it must stay on
+        // the audit trail. Generic cause: the client's own readiness data
+        // named the blocker in the warning the user saw.
+        if (capabilitySource === 'readiness_gate') {
+          await logRouting(routedCapability, 'readiness_gate', 1);
+        }
       } else {
         decision = await route(message, { pinned });
-        // Routing log (S-2): a missing table (migration 008 not applied) is
-        // skipped with a warning; ANY other write error fails loudly — a real
-        // DB bug must not be silently swallowed. supabase-js returns DB errors
-        // (doesn't throw), so both shapes are handled.
-        try {
-          const { error: logError } = await db.from('routing_log').insert({
-            user_id: req.user.id,
-            prompt_hash: hashPrompt(message),
-            capability: decision.capability,
-            confidence: decision.confidence,
-            override_source: decision.overrideSource,
-          });
-          if (logError) {
-            if (isMissingTableError(logError)) {
-              console.warn('[chat/stream] routing_log skipped (migration 008 not applied?):', logError.message);
-            } else {
-              throw new Error(`routing_log write failed: ${logError.message}`);
-            }
-          }
-        } catch (logErr) {
-          if (isMissingTableError(logErr)) {
-            console.warn('[chat/stream] routing_log skipped (migration 008 not applied?):', logErr.message);
-          } else {
-            throw logErr;
-          }
-        }
+        await logRouting(decision.capability, decision.overrideSource, decision.confidence);
       }
 
       // ── 2. Single-flight — BEFORE SSE headers so 409 stays plain JSON ───
@@ -318,6 +351,9 @@ export function createChatStreamRouter({
         }
         if (diag?.capability?.agents === 'attention') {
           if (decision.capability === 'both') {
+            // Audit the downgrade BEFORE the decision is consumed: the org
+            // half is what ran, so the log reflects the executed route.
+            await logRouting('org_change', gateOverrideSource(diag), 1);
             decision = {
               capability: 'org_change',
               confidence: 1,
@@ -326,6 +362,9 @@ export function createChatStreamRouter({
             };
             agentsGateNotice = `Skipping the agent half — ${agentsGateReason(diag)}`;
           } else {
+            // Audit the refused request (the message WAS agent intent), then
+            // refuse — every blocked send leaves a routing_log row.
+            await logRouting(decision.capability, gateOverrideSource(diag), 1);
             return res.status(403).json({ error: agentsUnavailableError(diag) });
           }
         }

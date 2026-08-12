@@ -467,6 +467,101 @@ test('agents gate: diagnostics outage fails open — chat proceeds, never blocke
   assert.equal(frames(res.chunks).at(-1), '[DONE]');
 });
 
+test('agents gate: a blocked send leaves an auditable routing_log row (readiness_gate + cause)', async () => {
+  let logged = null;
+  const engines = fakeEngines();
+  const { router } = makeRouter({
+    engines,
+    getDiagnostics: attentionDiagnostics,
+    db: withRoutingLog({ insert: async (row) => { logged = row; return { error: null }; } }),
+  });
+  const { res } = invokeRouter(router, {
+    body: { message: 'build an agent', orgId: ORG, capability: 'agent' },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(res.statusCode, 403);
+  assert.ok(logged, 'the gate block must be logged');
+  assert.equal(logged.capability, 'agent', 'the blocked capability is recorded');
+  assert.equal(logged.override_source, 'readiness_gate');
+  assert.equal(logged.confidence, 1);
+  assert.ok(logged.prompt_hash, 'hash of the blocked message is recorded');
+  assert.equal(engines.calls.agent.length, 0);
+});
+
+test('agents gate: the audit row carries the exact cause in override_source (settings disabled)', async () => {
+  let logged = null;
+  const { router } = makeRouter({
+    getDiagnostics: async () => ({
+      state: 'attention',
+      capability: { agents: 'attention', org_change: 'ok' },
+      checks: { settings: { agentforceEnabled: false, reason: 'x' } },
+    }),
+    db: withRoutingLog({ insert: async (row) => { logged = row; return { error: null }; } }),
+  });
+  const { res } = invokeRouter(router, {
+    body: { message: 'build an agent', orgId: ORG, capability: 'agent' },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(res.statusCode, 403);
+  assert.equal(logged.override_source, 'readiness_gate:settings_disabled');
+});
+
+test('agents gate: a both downgrade is logged as the executed route (org_change + readiness_gate)', async () => {
+  let logged = null;
+  const engines = fakeEngines();
+  const { router } = makeRouter({
+    engines,
+    getDiagnostics: attentionDiagnostics,
+    db: withRoutingLog({ insert: async (row) => { logged = row; return { error: null }; } }),
+  });
+  const { res } = invokeRouter(router, {
+    body: { message: 'build an agent and add a field', orgId: ORG, capability: 'both' },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(engines.calls.org.length, 1, 'org half still runs');
+  assert.ok(logged, 'the downgrade must be logged');
+  assert.equal(logged.capability, 'org_change', 'logged as the route that actually ran');
+  assert.equal(logged.override_source, 'readiness_gate');
+  assert.equal(frames(res.chunks).at(-1), '[DONE]');
+});
+
+test('agents gate: a client-routed downgrade (capabilitySource readiness_gate) is logged too', async () => {
+  let logged = null;
+  const engines = fakeEngines();
+  const { router } = makeRouter({
+    engines,
+    db: withRoutingLog({ insert: async (row) => { logged = row; return { error: null }; } }),
+  });
+  const { res } = invokeRouter(router, {
+    body: {
+      message: 'build an agent and add a field',
+      orgId: ORG,
+      capability: 'org_change',
+      capabilitySource: 'readiness_gate',
+    },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(engines.calls.org.length, 1, 'org half runs');
+  assert.ok(logged, 'the client-routed downgrade must be auditable');
+  assert.equal(logged.capability, 'org_change');
+  assert.equal(logged.override_source, 'readiness_gate');
+  assert.ok(logged.prompt_hash);
+  assert.equal(frames(res.chunks).at(-1), '[DONE]');
+});
+
+test('agents gate: a plain client capability (no marker) stays unlogged', async () => {
+  let logged = null;
+  const { router } = makeRouter({
+    db: withRoutingLog({ insert: async (row) => { logged = row; return { error: null }; } }),
+  });
+  const { res } = invokeRouter(router, {
+    body: { message: 'add a validation rule', orgId: ORG, capability: 'org_change' },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(logged, null, 'a normal client-routed turn is not logged');
+  assert.equal(frames(res.chunks).at(-1), '[DONE]');
+});
+
 test('single-flight: 409 plain JSON before SSE headers', async () => {
   const { router } = makeRouter({
     agent: {

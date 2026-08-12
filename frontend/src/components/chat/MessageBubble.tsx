@@ -1,6 +1,7 @@
 'use client';
 
-import { AlertTriangle, CheckCircle2, ExternalLink, XCircle } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, ArrowRight, CheckCircle2, ExternalLink, XCircle } from 'lucide-react';
 import Markdown from './Markdown';
 import type { ChatMessage } from '@/lib/chat-stream';
 
@@ -85,6 +86,37 @@ export default function MessageBubble({ msg }: { msg: ChatMessage }) {
               <XCircle className="w-3.5 h-3.5" />
             </span>
             <span className="text-sm font-medium text-red-900 leading-relaxed">{msg.content}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Richer version of the error bubble for a send blocked by the readiness
+  // gate (org can't run agents): amber, cause-aware, and actionable — a Fix
+  // in Settings link instead of a dead-end red bubble.
+  if (msg.type === 'gate_block') {
+    return (
+      <div className="flex justify-start">
+        <div className="bg-amber-50 border border-amber-200/70 rounded-2xl px-4 py-3.5 max-w-[85%] shadow-sm w-full">
+          <div className="flex items-start gap-3">
+            <span className="p-1.5 bg-amber-100 rounded-full text-amber-600 shrink-0 mt-0.5">
+              <AlertTriangle className="w-3.5 h-3.5" />
+            </span>
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <span className="text-xs font-semibold text-amber-900">
+                {msg.summary || "Agent building isn't available"}
+              </span>
+              <span className="text-xs text-amber-800/90 leading-relaxed whitespace-pre-line">
+                {msg.content}
+              </span>
+              <Link
+                href="/settings"
+                className="inline-flex items-center gap-1 self-start mt-0.5 text-xs font-semibold text-brand-blue hover:underline"
+              >
+                Fix in Settings <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
           </div>
         </div>
       </div>
