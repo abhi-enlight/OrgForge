@@ -1,0 +1,278 @@
+@import "tailwindcss";
+
+/*
+ * Forge design tokens (plan §6.5) — Tailwind v4 @theme.
+ *
+ * OrgForge's `brand-*` palette + shadows + fonts are mapped verbatim so
+ * component classes (bg-brand-blue-light, shadow-card-hover, …) keep working
+ * during the transition. Semantic status colors (pass/refused/warning) come
+ * from the same OrgForge spec. Fonts follow the legacy convention:
+ * Inter (UI) + Fira Code (artifacts).
+ */
+@theme {
+  /* Brand (OrgForge palette) */
+  --color-brand-blue: #1a6bff;
+  --color-brand-blue-hover: #0052e0;
+  --color-brand-blue-light: #eef4ff;
+  --color-brand-dark: #0a0f1e;
+  --color-brand-pass: #10b981;
+  --color-brand-pass-bg: #ecfdf5;
+  --color-brand-refused: #ef4444;
+  --color-brand-refused-bg: #fef2f2;
+  --color-brand-warning: #f59e0b;
+  --color-brand-warning-bg: #fffbeb;
+  --color-brand-surface: #f5f6fa;
+  --color-brand-border: #e8eaf0;
+  --color-brand-border-dashed: #c5ccdc;
+
+  /* Neutral text ramp (Agentforge) */
+  --color-text-primary: #0a0f1e;
+  --color-text-secondary: rgba(10, 15, 30, 0.65);
+  --color-text-muted: rgba(10, 15, 30, 0.35);
+
+  /* Fonts (Plus Jakarta Sans UI + JetBrains Mono code/artifacts) */
+  --font-sans: var(--font-jakarta), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, monospace;
+
+  /* Live Blueprint (landing/marketing only): neutral desaturations of the
+     brand neutrals for connector lines + dot grids. NOT a second accent. */
+  --color-blueprint-line: #d3dcee;
+  --color-blueprint-line-strong: #b9c6e4;
+  --color-blueprint-wire: #aebcdd;
+  --color-blueprint-wire-strong: #8fa4cf;
+  --color-blueprint-dot: rgba(10, 15, 30, 0.06);
+  --background-image-blueprint-grid: radial-gradient(
+    var(--color-blueprint-dot) 1px,
+    transparent 1px
+  );
+  --background-image-blueprint-grid-dark: radial-gradient(
+    rgba(255, 255, 255, 0.07) 1px,
+    transparent 1px
+  );
+  /* Fine drafting lines (major + minor hairlines) layered over the dot grid
+     for the isometric/blueprint mesh. Neutral, faint, decorative only. */
+  --background-image-blueprint-lines: linear-gradient(
+      rgba(10, 15, 30, 0.035) 1px,
+      transparent 1px
+    ),
+    linear-gradient(90deg, rgba(10, 15, 30, 0.035) 1px, transparent 1px),
+    linear-gradient(rgba(10, 15, 30, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10, 15, 30, 0.02) 1px, transparent 1px);
+  --background-image-blueprint-mesh: var(--background-image-blueprint-lines),
+    var(--background-image-blueprint-grid);
+
+  /* Shadows */
+  --shadow-soft: 0 1px 2px rgba(10, 15, 30, 0.04), 0 8px 24px -12px rgba(10, 15, 30, 0.08);
+  --shadow-lift: 0 2px 4px rgba(10, 15, 30, 0.05), 0 16px 32px -12px rgba(10, 15, 30, 0.12);
+  --shadow-card-hover: 0 20px 40px -15px rgba(10, 15, 30, 0.08);
+  --shadow-glow: 0 0 40px -10px rgba(26, 107, 255, 0.35);
+  --shadow-glow-lg: 0 0 60px -15px rgba(26, 107, 255, 0.45);
+  --shadow-pass: 0 4px 20px rgba(16, 185, 129, 0.15);
+  --shadow-refused: 0 4px 20px rgba(239, 68, 68, 0.15);
+
+  /* Radii */
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.25rem;
+
+  /* Motion */
+  /* JS twin lives in src/lib/motion.ts (EASE_OUT) — framer-motion can't read
+     CSS variables. Keep both in sync when the curve changes. */
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Backgrounds */
+  --background-image-radial-glow: radial-gradient(circle at center, rgba(26, 107, 255, 0.18) 0%, rgba(26, 107, 255, 0.04) 50%, transparent 75%);
+  --background-image-hero-gradient: linear-gradient(180deg, #f5f6fa 0%, #ffffff 100%);
+  --background-image-card-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.75) 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  /* framer-motion useScroll infers the window as its scroll container and
+     warns if it computes position:static — a non-static html silences that
+     while changing nothing visually. */
+  position: relative;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-white);
+  color: var(--color-text-primary);
+}
+
+/* Safe-area utilities (mobile-responsiveness skill): resolve to the iPhone
+   notch / home-indicator insets when the page is displayed with
+   viewport-fit=cover (standalone / PWA), and to 0 everywhere else — so the
+   sticky headers clear the notch without changing desktop layout. */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease-out forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+}
+
+/* Skeleton loading shimmer (ported from OrgForge for the 10-stage workspace) */
+/* Transform-only shimmer: the sweep runs on a ::after overlay animated with
+   translateX (compositor-only), over a static base — no background-position
+   paint on the 1.6s loop. Same timing and look as the original. */
+@keyframes skeleton-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(232, 234, 240, 0.7);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.55),
+    transparent
+  );
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+/* Stronger shimmer (dashboard stat tile): same transform-only sweep as
+   .skeleton but with a deeper base + brighter highlight so the loading
+   state reads clearly on white cards. */
+.skeleton-strong {
+  position: relative;
+  overflow: hidden;
+  background: rgba(219, 224, 236, 0.95);
+}
+
+.skeleton-strong::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.9),
+    transparent
+  );
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+/* Landing background life (Pass 42): slow translate3d/rotate drift on the
+   decorative isometric grid + ambient wireframe shapes. transform-only so it
+   stays on the compositor; a single long loop so it never reads as busy.
+   Both are gated off entirely under prefers-reduced-motion. */
+@keyframes blueprint-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes ambient-float {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0) rotate(2deg);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+}
+
+@keyframes ambient-pulse {
+  0% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+
+.animate-blueprint-drift {
+  animation: blueprint-drift 26s var(--ease-spring) infinite;
+}
+
+.animate-ambient-float {
+  animation: ambient-float 16s var(--ease-spring) infinite;
+}
+
+.animate-ambient-pulse {
+  animation: ambient-pulse 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .skeleton::after,
+  .skeleton-strong,
+  .skeleton-strong::after,
+  .animate-blueprint-drift,
+  .animate-ambient-float,
+  .animate-ambient-pulse,
+  .animate-pulse,
+  .animate-bounce {
+    animation: none;
+  }
+}
