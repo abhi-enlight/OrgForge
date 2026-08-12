@@ -5,7 +5,11 @@ import { createHash } from 'node:crypto';
 import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
 import { forgeDb, publicDb as credsDbSingleton } from '../lib/supabaseClients.js';
 import { routeIntent, createSseEnvelope, writeAiLog, describeImage as describeImageDefault } from '@forge/ai';
-import { validateInstanceUrl } from '@forge/diagnostics';
+import {
+  validateInstanceUrl,
+  getDiagnostics as getDiagnosticsDefault,
+  runPreFlightCheck as preFlightDefault,
+} from '@forge/diagnostics';
 import { getOrgCredentials } from '@forge/org-connections';
 import { setupSse } from '../lib/sseEmitter.js';
 import { isMissingTableError } from '../lib/isMissingTable.js';
@@ -31,6 +35,25 @@ const bodySchema = z.object({
 
 const CLARIFY_MESSAGE =
   'I need a bit more detail to route this request. Tell me whether you want to build or change a Salesforce agent, or make a change to your org configuration (fields, validation rules, permission sets…).';
+
+/**
+ * Cause-aware blocker copy for the agents-unavailable gate — mirrors the
+ * frontend's `agentsUnavailableHint` so every surface names the SAME fix
+ * (capability.agents is 'attention' for any blocker: connector package,
+ * Agentforce/Einstein settings, or Einstein Agent license).
+ */
+function agentsGateReason(diag) {
+  const c = diag?.checks || {};
+  if (c.package?.installed === false) return 'Connector package missing — install it to build agents';
+  if (c.settings?.agentforceEnabled === false) return 'Enable Agentforce Agent and Einstein in Setup → Agentforce';
+  if (c.license?.supported === false) return 'Einstein Agent license needed — see Settings';
+  return 'Agent building needs setup';
+}
+
+/** Plain-JSON 403 body for a refused pure-agent request. */
+function agentsUnavailableError(diag) {
+  return `Agent building is unavailable in this org. ${agentsGateReason(diag)}. Org changes still work.`;
+}
 
 // Legacy multer pipeline (Agentforge src/index.js): memory storage, 10MB cap,
 // mime allowlist. Images pass the filter and go to Gemini as inlineData
@@ -99,6 +122,8 @@ export function createChatStreamRouter({
   buildPrompt = buildPromptWithAttachment,
   buildImageParts = buildImagePartsDefault,
   describeImage = describeImageDefault,
+  getDiagnostics = getDiagnosticsDefault,
+  preFlight = preFlightDefault,
 } = {}) {
   const router = Router();
   const requireAuth = authMiddleware;
@@ -266,6 +291,46 @@ export function createChatStreamRouter({
         return res.status(400).json({ error: 'Org connection has an unsafe instance URL. Reconnect this org.' });
       }
 
+      // ── 3.5 Agents-unavailable gate (defense in depth) ────────────────
+      // The frontend disables the agent chip and routes away at send time,
+      // but the server is authoritative: when the org's preflight
+      // (server-cached, self-healing) says the agents capability is
+      // 'attention' — Agentforce/Einstein settings, license, or provisioning
+      // — an agent/both request must never reach the agent engine. `both`
+      // keeps its org-change half (EC-23: the org half is still a valid
+      // request) and is routed away to org_change with a warning frame; a
+      // pure `agent` request is refused with a plain-JSON 403 (pre-SSE,
+      // same contract as the single-flight 409). A diagnostics outage fails
+      // OPEN — chat must not break because the gate couldn't verify (the
+      // engine error bubble stays the last line of defense).
+      let agentsGateNotice = null;
+      if (decision.capability === 'agent' || decision.capability === 'both') {
+        let diag;
+        try {
+          diag = await getDiagnostics({
+            db,
+            run: () => preFlight(creds.accessToken, creds.instanceUrl),
+            userId: req.user.id,
+            orgId,
+          });
+        } catch (gateErr) {
+          console.warn('[chat/stream] agents gate — diagnostics failed, proceeding:', gateErr.message);
+        }
+        if (diag?.capability?.agents === 'attention') {
+          if (decision.capability === 'both') {
+            decision = {
+              capability: 'org_change',
+              confidence: 1,
+              reason: agentsGateReason(diag),
+              overrideSource: 'readiness_gate',
+            };
+            agentsGateNotice = `Skipping the agent half — ${agentsGateReason(diag)}`;
+          } else {
+            return res.status(403).json({ error: agentsUnavailableError(diag) });
+          }
+        }
+      }
+
       // Re-check single-flight after the credential await — closes the
       // double-click-during-refresh window pre-SSE (clean 409, not a stream).
       if (
@@ -297,6 +362,15 @@ export function createChatStreamRouter({
           }));
         }
       };
+
+      // A `both` request downgraded by the agents gate — tell the user the
+      // agent half was skipped (and why) before the org pipeline runs.
+      if (agentsGateNotice) {
+        send(
+          { type: 'deploy_warning', content: agentsGateNotice, summary: 'Agent half skipped' },
+          'org_change'
+        );
+      }
 
       if (decision.capability === 'clarify') {
         send({ type: 'status', content: 'Routing paused — clarification needed.' });

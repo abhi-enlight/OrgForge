@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { ArrowRight, Eraser, Info, Paperclip, PlugZap, RotateCcw, SendHorizontal, Square, Sparkles, X } from 'lucide-react';
 import { useActiveOrg } from '@/lib/org-context';
 import { useOrgPackageHealth } from '@/lib/orgHealth';
-import { useOrgReadiness } from '@/lib/orgReadiness';
+import { useOrgReadiness, agentsUnavailableHint } from '@/lib/orgReadiness';
 import { resetChatSession, streamChat, type ChatMessage } from '@/lib/chat-stream';
 import { FORGE_UNIFIED_FRONTEND } from '@/lib/flags';
 import { classifyWithStub } from '@forge/ai/stubClassifier';
@@ -105,20 +105,18 @@ export default function ChatPage() {
   );
   const showEmptyState = messages.length === 0 && !isBuilding;
 
-  // Org readiness (SHARED with the sign-in banner — same fetch, same data):
-  // when the preflight says the org can't run agents (Agentforce + Einstein
-  // settings, license, provisioning), the Agent and Both chip options are
-  // disabled and any previously-pinned agent/both choice downgrades to Auto so
-  // a disabled option can never sit in an active state.
+  // Org readiness (SHARED via the provider — same fetch, same data): when the
+  // preflight says the org can't run agents (Agentforce + Einstein settings,
+  // license, provisioning), the Agent and Both chip options are disabled and
+  // any previously-pinned agent/both choice downgrades to Auto so a disabled
+  // option can never sit in an active state. The flags are org-attributed by
+  // the provider, so they're always about the ACTIVE org.
   const readiness = useOrgReadiness();
-  const agentsUnavailable =
-    readiness.orgId === org?.id && readiness.diag?.capability?.agents === 'attention';
+  const agentsUnavailable = readiness.agentsUnavailable;
   // A FAILED readiness fetch (transient network/token blip) leaves the chip
   // enabled — surface that the availability is unknown and let the user retry
-  // in-place (the hook unmarks failed orgs, so retry() re-runs without a
-  // remount).
-  const readinessFailed =
-    readiness.orgId === org?.id && readiness.error != null && !readiness.diag;
+  // in-place (failed orgs are unmarked, so retry() re-runs without a remount).
+  const readinessFailed = readiness.checkFailed;
   const safePin = agentsUnavailable && (pin === 'agent' || pin === 'both') ? null : pin;
 
   // Deep links (?prompt=) — from the dashboard tiles, templates, and the
@@ -182,17 +180,57 @@ export default function ChatPage() {
           attachErrorTimerRef.current = null;
         }
       }
-      setIsBuilding(true);
-      setIsUserScrolledUp(false);
+
+      appendMessage({ id: makeId(), role: 'user', content: text, type: 'message' });
+
       // A new message supersedes any reset confirmation — clear the note AND
-      // its auto-dismiss timer so it can't fire later.
+      // its auto-dismiss timer so it can't fire later. Runs BEFORE the gate so
+      // a blocked send also dismisses a lingering note.
       setResetNote(null);
       if (resetNoteTimerRef.current) {
         clearTimeout(resetNoteTimerRef.current);
         resetNoteTimerRef.current = null;
       }
 
-      appendMessage({ id: makeId(), role: 'user', content: text, type: 'message' });
+      // ── Send-time agents gate ────────────────────────────────────────
+      // When the active org can't run agents (the same shared readiness that
+      // disables the chip), an AUTO-routed message the rule-based classifier
+      // reads as agent intent must never reach the agent engine:
+      //   - `agent` verdict → blocked with a cause-aware error bubble (no
+      //     engine call at all — this is the send-time redirect).
+      //   - `both` verdict → the org-change half is routed away explicitly
+      //     (`capability` is authoritative server-side); the agent half is
+      //     skipped with a warning bubble. The backend repeats this gate for
+      //     direct API callers, so a stub false-negative still can't run the
+      //     agent engine on an attention org.
+      // An explicit org_change pin is the user's deliberate choice and is
+      // never gated; a `clarify` verdict flows through (the server asks).
+      let sendCapability: CapabilityPin = null;
+      if (agentsUnavailable && safePin !== 'org_change') {
+        const verdict = classifyWithStub(text);
+        if (verdict.capability === 'agent') {
+          appendMessage({
+            id: makeId(),
+            role: 'assistant',
+            content: `Agent building isn't available in this org — ${agentsUnavailableHint(readiness.diag)}. I stopped this request before it ran.`,
+            type: 'error',
+          });
+          return;
+        }
+        if (verdict.capability === 'both') {
+          sendCapability = 'org_change';
+          appendMessage({
+            id: makeId(),
+            role: 'assistant',
+            content: `Agent building isn't available in this org — ${agentsUnavailableHint(readiness.diag)}. Skipping the agent half and applying the org change.`,
+            type: 'deploy_warning',
+            summary: 'Agent half skipped',
+          });
+        }
+      }
+
+      setIsBuilding(true);
+      setIsUserScrolledUp(false);
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -202,6 +240,7 @@ export default function ChatPage() {
           {
             message: text,
             orgId: org.id,
+            capability: sendCapability ?? undefined,
             pinned: safePin ?? undefined,
             sessionId: sessionIdRef.current ?? undefined,
             file: overridePrompt ? undefined : (attachment ?? undefined),
@@ -274,7 +313,7 @@ export default function ChatPage() {
         setIsBuilding(false);
       }
     },
-    [appendMessage, attachment, input, isBuilding, org, safePin]
+    [appendMessage, attachment, input, isBuilding, org, safePin, agentsUnavailable, readiness]
   );
 
   const stopChat = () => {

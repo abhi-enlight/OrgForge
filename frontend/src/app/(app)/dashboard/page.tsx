@@ -8,7 +8,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { apiFetch } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { useActiveOrg } from '@/lib/org-context';
-import { useOrgReadiness, type ReadinessDiag } from '@/lib/orgReadiness';
+import { useOrgReadiness, agentsUnavailableHint } from '@/lib/orgReadiness';
 import { ToastProvider, useToast } from '@/components/providers/ToastProvider';
 import { cn } from '@/lib/utils';
 import { EASE_REVEAL } from '@/lib/motion';
@@ -66,20 +66,6 @@ function greetingForToday(): string {
 }
 
 /**
- * Cause-aware hint for the Agents tile when the org's agents capability is
- * attention. capability.agents is 'attention' for ANY blocker — naming the
- * actual one (package vs Agentforce/Einstein settings vs license) keeps the
- * tile honest, with a neutral pointer to Settings as the fallback.
- */
-function agentsUnavailableHint(diag: ReadinessDiag | null): string {
-  const c = diag?.checks;
-  if (c?.package?.installed === false) return 'connector package missing — install to build agents';
-  if (c?.settings?.agentforceEnabled === false) return 'building needs setup — enable Agentforce + Einstein';
-  if (c?.license?.supported === false) return 'Einstein Agent license needed — see Settings';
-  return 'needs setup — see Settings';
-}
-
-/**
  * Dashboard (plan §6.2) — the calm home. One hero action (Ask Forge), three
  * clickable stat tiles, one attention banner (only when something is wrong),
  * and one unified activity feed. Empty states collapse the page to a single
@@ -101,15 +87,12 @@ function DashboardContent() {
   const { org, setOrgs } = useActiveOrg();
   const reduceMotion = useReducedMotion();
   const toast = useToast();
-  // Org readiness (SHARED with the chat capability chip + sign-in banner):
-  // when the preflight says agents are unavailable, the Agents tile flips to
-  // an amber "Needs setup" state and deep-links to Settings instead of a chat
-  // run that would fail.
+  // Org readiness (SHARED via the provider — chat chip + sign-in banner + the
+  // Agents tile all read the same result): when the preflight says agents are
+  // unavailable, the Agents tile flips to an amber "Needs setup" state and
+  // deep-links to Settings instead of a chat run that would fail.
   const readiness = useOrgReadiness();
-  // Same derivation as the chat page: the hook sets orgId only together with
-  // status 'done', so attribution alone implies the check completed.
-  const agentsUnavailable =
-    readiness.orgId === org?.id && readiness.diag?.capability?.agents === 'attention';
+  const agentsUnavailable = readiness.agentsUnavailable;
   const [firstName, setFirstName] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentSummary[] | null>(null);
   const [records, setRecords] = useState<ChangeRecord[] | null>(null);

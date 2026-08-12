@@ -56,6 +56,21 @@ const loggingDb = {
   from: (table) => (table === 'routing_log' ? { insert: async () => ({ error: null }) } : chatSessionsOk()),
 };
 
+// Default diagnostics gate verdict: a healthy org, so agent/both requests pass
+// the agents-unavailable gate (gate tests override this with an attention
+// verdict). Prevents every existing test from hitting the real cache/network.
+const healthyDiagnostics = async () => ({
+  state: 'ok',
+  capability: { agents: 'ok', org_change: 'ok' },
+});
+
+// Attention verdict — agents blocked, org changes fine (the shape the
+// preflight returns for settings/license/provisioning failures).
+const attentionDiagnostics = async () => ({
+  state: 'attention',
+  capability: { agents: 'attention', org_change: 'ok' },
+});
+
 // Wraps a custom routing_log handler with the default chat_sessions chain.
 function withRoutingLog(routingLogHandler) {
   return { from: (table) => (table === 'routing_log' ? routingLogHandler : chatSessionsOk()) };
@@ -167,6 +182,10 @@ function makeRouter(overrides = {}) {
     // describeImage is stubbed — the real one needs GOOGLE_AI_API_KEY.
     buildImageParts: overrides.buildImageParts,
     describeImage: overrides.describeImage || (async () => 'a vision description of the image'),
+    // Healthy-by-default so existing tests never hit the real diagnostics
+    // cache/network; gate tests override it.
+    getDiagnostics: overrides.getDiagnostics || healthyDiagnostics,
+    preFlight: overrides.preFlight,
   });
   return { router, calls };
 }
@@ -186,6 +205,7 @@ function makeApp(opts = {}) {
     org: { async runOrgChange({ onEvent }) { onEvent({ type: 'status', content: 'org' }); return {}; } },
     getCredentials: stubCredentials,
     db: loggingDb,
+    getDiagnostics: healthyDiagnostics,
   });
   app.use('/api/v1/chat/stream', router);
   return app;
@@ -363,6 +383,88 @@ test('clarify: no engine invoked, clarification message, [DONE]', async () => {
   const f = frames(res.chunks);
   assert.ok(f.find((x) => x.type === 'message' && x.summary === 'Clarification needed'));
   assert.equal(f.at(-1), '[DONE]');
+});
+
+// ── agents-unavailable gate (send-time defense in depth) ────────────────────
+
+test('agents gate: pure agent request on an attention org → 403 plain JSON, no engine runs', async () => {
+  const engines = fakeEngines();
+  const { router } = makeRouter({
+    engines,
+    getDiagnostics: attentionDiagnostics,
+  });
+  const { res } = invokeRouter(router, {
+    body: { message: 'build an agent', orgId: ORG, capability: 'agent' },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(res.statusCode, 403, 'refused before any engine work');
+  assert.ok(res.body.error.includes('Agent building is unavailable in this org'), res.body.error);
+  assert.ok(res.body.error.includes('Org changes still work'), 'names the still-working path');
+  assert.equal(engines.calls.agent.length, 0, 'agent engine never invoked');
+  assert.equal(engines.calls.org.length, 0, 'org engine never invoked');
+  assert.equal(res.headersSent, false, '403 is plain JSON, not SSE');
+});
+
+test('agents gate: 403 carries the cause-aware fix for the actual blocker', async () => {
+  const { router } = makeRouter({
+    getDiagnostics: async () => ({
+      state: 'attention',
+      capability: { agents: 'attention', org_change: 'ok' },
+      checks: { settings: { agentforceEnabled: false, reason: 'x' } },
+    }),
+  });
+  const { res } = invokeRouter(router, {
+    body: { message: 'build an agent', orgId: ORG, capability: 'agent' },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(res.statusCode, 403);
+  assert.ok(res.body.error.includes('Enable Agentforce Agent and Einstein in Setup → Agentforce'), res.body.error);
+});
+
+test('agents gate: both on an attention org → org-change half routed away, agent half skipped with a warning', async () => {
+  const engines = fakeEngines();
+  const { router } = makeRouter({
+    engines,
+    getDiagnostics: attentionDiagnostics,
+  });
+  const { res } = invokeRouter(router, {
+    body: { message: 'build an agent and add a field', orgId: ORG, capability: 'both' },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(engines.calls.agent.length, 0, 'agent engine never invoked');
+  assert.equal(engines.calls.org.length, 1, 'org-change half still runs (routed away)');
+  const f = frames(res.chunks);
+  const warn = f.find((x) => x.type === 'deploy_warning' && x.summary === 'Agent half skipped');
+  assert.ok(warn, 'warning frame names the skipped agent half');
+  assert.ok(/Skipping the agent half/.test(warn.content), warn.content);
+  assert.equal(warn.capability, 'org_change', 'warning belongs to the org segment');
+  assert.equal(f.at(-1), '[DONE]');
+});
+
+test('agents gate: healthy org → agent request runs normally', async () => {
+  const engines = fakeEngines();
+  const { router } = makeRouter({ engines });
+  const { res } = invokeRouter(router, {
+    body: { message: 'build an agent', orgId: ORG, capability: 'agent' },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(engines.calls.agent.length, 1, 'agent engine invoked');
+  assert.equal(engines.calls.org.length, 0);
+  assert.equal(frames(res.chunks).at(-1), '[DONE]');
+});
+
+test('agents gate: diagnostics outage fails open — chat proceeds, never blocked', async () => {
+  const engines = fakeEngines();
+  const { router } = makeRouter({
+    engines,
+    getDiagnostics: async () => { throw new Error('cache boom'); },
+  });
+  const { res } = invokeRouter(router, {
+    body: { message: 'build an agent', orgId: ORG, capability: 'agent' },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(engines.calls.agent.length, 1, 'gate cannot verify → request proceeds');
+  assert.equal(frames(res.chunks).at(-1), '[DONE]');
 });
 
 test('single-flight: 409 plain JSON before SSE headers', async () => {
@@ -682,6 +784,7 @@ test('real HTTP: multipart FormData with a .txt file reaches the engines end to 
     getCredentials: stubCredentials,
     db: loggingDb,
     extractFile: async (f) => ({ kind: 'text', text: f.buffer.toString('utf-8') }),
+    getDiagnostics: healthyDiagnostics,
   });
   app.use('/api/v1/chat/stream', router);
   const server = app.listen(0);

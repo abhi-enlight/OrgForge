@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { apiFetch, getErrorMessage, HEAVY_REQUEST_TIMEOUT_MS } from '@/lib/api';
 import { useActiveOrg } from '@/lib/org-context';
+import { useOrgReadiness, agentsUnavailableHint } from '@/lib/orgReadiness';
 import { cn } from '@/lib/utils';
 import { EASE_REVEAL } from '@/lib/motion';
 
@@ -242,6 +243,13 @@ export default function AgentsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<AgentInfo | null>(null);
+  // Shared org readiness (same provider as the sign-in banner, chat chip, and
+  // dashboard tile — the flags are org-attributed by the provider): a compact
+  // summary row under the header explains why agent building is unavailable,
+  // or lets the user retry a failed check in place.
+  const readiness = useOrgReadiness();
+  const agentsUnavailable = readiness.agentsUnavailable;
+  const readinessFailed = readiness.checkFailed;
 
   const loadOrgs = async () => {
     try {
@@ -364,6 +372,39 @@ export default function AgentsPage() {
           </Link>
         </div>
       </div>
+
+      {/* Readiness summary row — only shows when agents can't run (cause-aware
+          copy shared with the dashboard tile) or availability is unknown. */}
+      {agentsUnavailable && (
+        <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 animate-slide-up">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+          <p className="text-sm text-slate-700 flex-1">
+            Agent building is unavailable in this org.{' '}
+            <span className="text-slate-600">{agentsUnavailableHint(readiness.diag)}.</span>
+          </p>
+          <Link
+            href="/settings"
+            className="shrink-0 text-sm font-semibold text-brand-blue hover:underline"
+          >
+            Fix in Settings
+          </Link>
+        </div>
+      )}
+      {readinessFailed && (
+        <div className="flex items-center gap-3 rounded-2xl border border-brand-border bg-white px-4 py-3 shadow-soft animate-slide-up">
+          <AlertTriangle className="w-4 h-4 text-slate-400 shrink-0" />
+          <p className="text-sm text-slate-500 flex-1">
+            Couldn&apos;t check whether agent building is available in this org.
+          </p>
+          <button
+            type="button"
+            onClick={readiness.retry}
+            className="shrink-0 text-sm font-semibold text-brand-blue hover:underline cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Search — quiet filter, hidden when the list is empty */}
       {agents !== null && agents.length > 0 && (
