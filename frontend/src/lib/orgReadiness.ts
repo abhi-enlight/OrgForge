@@ -41,7 +41,8 @@ export interface ReadinessDiag {
  * - Responses are attributed to the org they were fetched for; consumers
  *   render only when `orgId` matches the active org (no cross-org flash).
  * - FAILED fetches unmark the org, so `retry()` can re-run within the same
- *   visit — no remount needed. An in-flight check is never duplicated.
+ *   visit — no remount needed. A check is never duplicated for the SAME org;
+ *   a newer org's check supersedes an in-flight one (per-org in-flight guard).
  */
 export function useOrgReadiness() {
   const { org } = useActiveOrg();
@@ -53,12 +54,14 @@ export function useOrgReadiness() {
   // The org whose fetch is currently marked as done/running. Cleared on
   // failure so a retry can re-run without waiting for a remount.
   const fetchedFor = useRef<string | null>(null);
-  // Prevents the auto-check and a manual retry from racing the same org.
-  const inFlight = useRef(false);
+  // Per-org in-flight guard: a check is never duplicated for the SAME org
+  // (auto vs manual retry racing), but a DIFFERENT org's check supersedes an
+  // in-flight one — switching orgs mid-fetch must still auto-check the new org.
+  const inFlightOrg = useRef<string | null>(null);
 
   const runCheck = useCallback(async (targetOrgId: string) => {
-    if (inFlight.current) return; // a check is already running — skip
-    inFlight.current = true;
+    if (inFlightOrg.current === targetOrgId) return; // same org already running
+    inFlightOrg.current = targetOrgId;
     setStatus('loading');
     setError(null);
     try {
@@ -73,13 +76,15 @@ export function useOrgReadiness() {
       if (fetchedFor.current !== targetOrgId) return; // superseded by a newer org
       // Unmark this org so retry() can re-run it in-place. The failure is
       // still attributed to the org (orgId set) so consumers can offer retry.
-      if (fetchedFor.current === targetOrgId) fetchedFor.current = null;
+      fetchedFor.current = null;
       setDiag(null);
       setOrgId(targetOrgId);
       setError(err instanceof Error ? err.message : 'Readiness check failed');
       setStatus('done');
     } finally {
-      inFlight.current = false;
+      // Only release the guard when this check still owns it — a newer org's
+      // check may have taken over.
+      if (inFlightOrg.current === targetOrgId) inFlightOrg.current = null;
     }
   }, []);
 
@@ -106,9 +111,9 @@ export function useOrgReadiness() {
   }, [org, runCheck]);
 
   /** Re-run the check for the active org — event-handler context (no
-   *  effect-deferral needed). No-op while a check is in flight. */
+   *  effect-deferral needed). No-op while the same org is in flight. */
   const retry = useCallback(() => {
-    if (!org || inFlight.current) return;
+    if (!org || inFlightOrg.current === org.id) return;
     fetchedFor.current = org.id;
     runCheck(org.id);
   }, [org, runCheck]);
