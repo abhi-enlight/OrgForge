@@ -9,7 +9,7 @@ import { CtaSection } from '@/components/landing/CtaSection';
 import { Footer } from '@/components/landing/Footer';
 
 export const metadata: Metadata = {
-  title: 'Forge: One copilot for your whole Salesforce org',
+  title: 'OrgForge: One copilot for your whole Salesforce org',
   description:
     'Build and deploy Salesforce Agentforce agents in natural language, and ship governed org changes with impact analysis and refusal gates. One chat, two skills, fully signed.',
 };

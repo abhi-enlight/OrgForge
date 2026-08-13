@@ -303,7 +303,7 @@ export default function LoginFlow() {
             </button>
 
             <p className="text-sm text-slate-500 text-center">
-              {isSignUp ? 'Already have an account?' : "New to Forge?"}{' '}
+              {isSignUp ? 'Already have an account?' : "New to OrgForge?"}{' '}
               <button
                 type="button"
                 onClick={() => setIsSignUp((v) => !v)}
@@ -321,7 +321,7 @@ export default function LoginFlow() {
             <div>
               <h2 className="font-semibold text-brand-dark">Connect Salesforce</h2>
               <p className="text-sm text-slate-500 mt-0.5">
-                Pick the org type. Forge signs you in with Salesforce and checks everything else in the background.
+                Pick the org type. OrgForge signs you in with Salesforce and checks everything else in the background.
               </p>
             </div>
 
@@ -404,7 +404,7 @@ export default function LoginFlow() {
                 <Check className="w-6 h-6 text-brand-pass" />
               </span>
               <h2 className="font-semibold text-brand-dark">You&apos;re all set</h2>
-              <p className="text-sm text-slate-500 mt-1">Ask Forge to build an agent or make an org change.</p>
+              <p className="text-sm text-slate-500 mt-1">Ask OrgForge to build an agent or make an org change.</p>
             </div>
 
             <div className="rounded-xl border border-brand-border bg-brand-surface/50 p-4">
@@ -444,7 +444,7 @@ export default function LoginFlow() {
         )}
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          Forge · Enlight Lab · {new Date().getFullYear()}
+          OrgForge · Enlight Lab · {new Date().getFullYear()}
         </p>
       </div>
     </div>

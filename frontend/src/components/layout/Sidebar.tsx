@@ -104,7 +104,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
         <div className="px-3 pt-4 border-t border-brand-border">
           <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-slate-400">
-            FORGE v1
+            ORG FORGE v1
           </p>
         </div>
       </aside>

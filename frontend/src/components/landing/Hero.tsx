@@ -61,7 +61,7 @@ export function Hero() {
         <div className="lg:col-span-5">
           <Reveal variant="fade">
             <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-brand-blue">
-              Forge by Enlight Lab
+              OrgForge by Enlight Lab
             </p>
           </Reveal>
           <Reveal variant="fade-up" delay={0.08}>
@@ -81,7 +81,7 @@ export function Hero() {
                 href="/login"
                 className="group inline-flex items-center gap-2 rounded-full bg-brand-blue px-7 py-3.5 text-sm font-semibold text-white shadow-soft transition-all duration-200 hover:bg-brand-blue-hover hover:shadow-lift active:scale-[0.98]"
               >
-                Open Forge
+                Open OrgForge
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
               </Link>
               <a

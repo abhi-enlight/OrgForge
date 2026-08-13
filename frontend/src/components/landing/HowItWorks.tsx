@@ -17,7 +17,7 @@ const STAGES = [
   {
     icon: PlugZap,
     title: 'Connect your org',
-    body: 'One OAuth login to Salesforce. Pick Production, Sandbox, or Scratch and Forge indexes your org context.',
+    body: 'One OAuth login to Salesforce. Pick Production, Sandbox, or Scratch and OrgForge indexes your org context.',
   },
   {
     icon: MessageSquareText,

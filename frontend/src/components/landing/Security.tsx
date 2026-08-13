@@ -38,7 +38,7 @@ export function Security() {
                 Security is the baseline, not a feature
               </h2>
               <p className="mt-4 text-lg leading-relaxed text-text-secondary">
-                Forge was built for teams that treat Salesforce as production
+                OrgForge was built for teams that treat Salesforce as production
                 infrastructure. The guarantees are structural, not cosmetic.
               </p>
             </div>

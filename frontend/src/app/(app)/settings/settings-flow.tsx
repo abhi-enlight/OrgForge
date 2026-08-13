@@ -471,7 +471,7 @@ export default function SettingsFlow() {
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Packaged External Client App</p>
             <p className="mt-1.5 text-sm text-slate-600">
-              Org connections use the packaged <span className="font-semibold text-brand-dark">Forge Connector</span>{' '}
+              Org connections use the packaged <span className="font-semibold text-brand-dark">OrgForge Connector</span>{' '}
               External Client App (OAuth scopes Basic, Api, RefreshToken, OpenID; PKCE + refresh-token rotation
               enforced). Install the connector package once per org — the dashboard surfaces an install prompt when a
               connected org is missing it.
@@ -480,7 +480,7 @@ export default function SettingsFlow() {
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Runtime</p>
             <p className="mt-1.5 text-sm text-slate-600">
-              Forge runs a single unified API with the Agent and Org Change capabilities mounted behind feature flags
+              OrgForge runs a single unified API with the Agent and Org Change capabilities mounted behind feature flags
               (<span className="font-mono text-xs">FORGE_UNIFIED_API</span> /{' '}
               <span className="font-mono text-xs">FORGE_MOUNT_AGENTFORGE</span>). Legacy apps keep running until the
               Phase 5 decommission.

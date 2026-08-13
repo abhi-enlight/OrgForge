@@ -75,7 +75,7 @@ export function Capabilities() {
                   Build agents
                 </h3>
                 <p className="mt-3 max-w-lg leading-relaxed text-white/70">
-                  Describe a support agent in plain language and Forge generates
+                  Describe a support agent in plain language and OrgForge generates
                   the .agent file, wiring topics, actions, and reasoning
                   instructions through the real Agentforce toolchain.
                 </p>

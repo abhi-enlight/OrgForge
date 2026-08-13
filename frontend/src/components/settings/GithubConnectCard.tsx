@@ -244,7 +244,7 @@ export default function GithubConnectCard({
             )}
           >
             {gettingInstallUrl ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
-            Install the Forge Audit Logger
+            Install the OrgForge Audit Logger
           </button>
           <p className={cn('text-xs text-slate-400', compact && 'text-[11px]')}>
             Opens GitHub in a new tab — after installing, choose the repo on the Settings page that opens, then come

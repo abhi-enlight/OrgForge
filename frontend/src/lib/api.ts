@@ -35,7 +35,7 @@ export function getErrorMessage(err: unknown, fallback = 'Something went wrong. 
   if (err instanceof Error && err.message) {
     if (err.name === 'AbortError') return 'The request timed out. Please try again.';
     if (/failed to fetch|fetch failed/i.test(err.message)) {
-      return 'Unable to reach the Forge server. Check your connection and try again.';
+      return 'Unable to reach the OrgForge server. Check your connection and try again.';
     }
     return err.message;
   }
@@ -95,7 +95,7 @@ export async function apiFetch<T = unknown>(
     const message =
       err instanceof Error && err.name === 'AbortError'
         ? 'The request timed out. Please try again.'
-        : 'Unable to reach the Forge server. Check your connection and try again.';
+        : 'Unable to reach the OrgForge server. Check your connection and try again.';
     throw new ApiError(message, 0);
   }
 

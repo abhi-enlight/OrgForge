@@ -1,4 +1,4 @@
-# Forge (unified-forge)
+# OrgForge (orgforge)
 
 One conversational copilot for the whole Salesforce org — the unification of
 Agentforge (agent builder) and OrgForge (governed org customization) into one
@@ -13,7 +13,7 @@ sibling repos were archived to `/Users/abhi/Enlight/archive/` (Pass 33). Live Su
 ## Layout
 
 ```
-unified-forge/
+orgforge/
 ├── frontend/                  # Next.js 16 app (port 3000) — @forge/web (@supabase/ssr middleware)
 │   └── src/                   # app router pages, components, lib, middleware.ts
 ├── backend/                   # ONE Express 5 entry (port 3001) — @forge/api, native ESM
@@ -42,7 +42,7 @@ unified-forge/
 ## Dev
 
 ```bash
-npm install                 # from unified-forge/
+npm install                 # from orgforge/
 npm run dev                 # starts BOTH: API on :3001 + web on :3000 (concurrently)
 npm run dev:api             # API only (:3001, capability flags on)
 npm run dev:web             # web only (:3000)
@@ -78,7 +78,7 @@ Env reference: `.env.example`. **Do not commit `.env`.**
 | OrgForge backend (`OrgForge/backend`) | **138/138 pass** |
 | OrgForge frontend Playwright e2e | pending (`npm run test:e2e`) |
 | Agentforge backend | no unit-test files in `src/` (AI Judge cron tested manually) |
-| unified-forge packages | **97/97 pass** (`npm test`) |
+| orgforge packages | **97/97 pass** (`npm test`) |
 | `frontend` (Next 16 + Tailwind v4) | tsc ✅ lint ✅ build ✅ (10 static routes; Copilot streaming + chips + inline org-change cards; Agents + Changes + Settings pages) |
 
 Freeze these before Phase 2 mounts the routers; any merged-process regression must be measured against this table (§14.2).

@@ -52,7 +52,7 @@
 ## 1. Phase 0 — Baseline (regression oracle) — *mostly done*
 
 - [x] OrgForge backend test suite recorded: 138/138
-- [x] unified-forge package tests recorded: 97/97
+- [x] orgforge package tests recorded: 97/97
 - [x] Agentforge backend: no unit tests in `src/` (documented)
 - [x] OrgForge frontend Playwright e2e baseline (`cd OrgForge/frontend && npm run test:e2e`) — **Pass 18: 3 passed (16.4s)** — ambiguity-escape (rephrase + free-text hatches) + 10-stage operator flow, chromium
 - [x] Freeze API contract changelog — **Pass 18: `docs/api_contract.md`** (frozen baseline; diff vs `OrgForge/docs/architecture/API.md` + `Agentforge/docs/api.md`; §6 additive-only policy)
@@ -202,7 +202,7 @@
 
 | Gate | Command | When |
 |---|---|---|
-| Unified tests | `cd unified-forge && npm test` (target 30+ → grows) | after every package |
+| Unified tests | `cd orgforge && npm test` (target 30+ → grows) | after every package |
 | OrgForge baseline (archived Pass 33) | re-homed suite `backend/src/orgforge/*.test.js` — part of `npm test` (402/402) | after API mount changes |
 | Merged smoke | flags ON + curl health/auth/orgs/link-legacy | after API changes |
 | Frontend | `cd frontend && npm run lint && npm run typecheck` | after frontend work |

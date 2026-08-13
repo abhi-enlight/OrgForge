@@ -1,6 +1,6 @@
-# Forge — Technology Stack
+# OrgForge — Technology Stack
 
-The stack as it actually exists in `unified-forge/` (verified against workspace `package.json` files and source layout).
+The stack as it actually exists in `orgforge/` (verified against workspace `package.json` files and source layout).
 
 **Docs set (one product):** [`unification_plan.md`](./unification_plan.md) (design) · [`DECISIONS.md`](./DECISIONS.md) (decisions) · [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) (tracker) · [`api_contract.md`](./api_contract.md) (frozen API) · [`PRD.md`](./PRD.md) (requirements) · [`API.md`](./API.md) (reference) · [`APP_FLOW.md`](./APP_FLOW.md) (flows) · [`DESIGN.md`](./DESIGN.md) (design system) · [`PHASE5_PLAN.md`](./PHASE5_PLAN.md) (phase 5) · [`PRD_COMPLIANCE.md`](./PRD_COMPLIANCE.md) (audit) · legacy PRDs ([`OrgForge`](./legacy/OrgForge_PRD.md) · [`Agentforge`](./legacy/Agentforge_PRD.md))
 
@@ -31,7 +31,7 @@ The stack as it actually exists in `unified-forge/` (verified against workspace 
 ## 2. Monorepo layout
 
 ```
-unified-forge/
+orgforge/
 ├── backend/                   @forge/api   — ONE Express 5 entry (:3001), mounts all routers
 ├── frontend/                  @forge/web   — Next.js 16 App Router app (:3000)
 ├── packages/

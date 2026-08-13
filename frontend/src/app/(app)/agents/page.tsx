@@ -368,7 +368,7 @@ export default function AgentsPage() {
             href="/chat"
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue text-white text-sm font-semibold shadow-glow hover:bg-brand-blue-hover transition-colors"
           >
-            <Sparkles className="w-4 h-4" /> Ask Forge
+            <Sparkles className="w-4 h-4" /> Ask OrgForge
           </Link>
         </div>
       </div>

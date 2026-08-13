@@ -18,7 +18,7 @@ import StarterCards from '@/components/chat/StarterCards';
 import PackageRequiredGate from '@/components/org/PackageRequiredGate';
 
 const GREETING =
-  "Hi, I'm Forge — your Salesforce copilot. Ask me to **build or update an agent**, or to make a **governed org change** (validation rules, permission sets, fields).";
+  "Hi, I'm OrgForge — your Salesforce copilot. Ask me to **build or update an agent**, or to make a **governed org change** (validation rules, permission sets, fields).";
 
 /** crypto.randomUUID is unavailable in non-secure contexts (http on LAN IP) — same fallback everywhere (review finding). */
 function makeId(): string {
@@ -498,7 +498,7 @@ export default function ChatPage() {
         <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-brand-border bg-white/60">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
             <Sparkles className="w-3.5 h-3.5 text-brand-blue" />
-            Forge Copilot
+            OrgForge Copilot
             <span className="hidden sm:inline text-slate-300">·</span>
             <span className="hidden sm:inline text-slate-400">{org.name}</span>
           </div>
@@ -523,7 +523,7 @@ export default function ChatPage() {
               <span className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-brand-blue-light mb-4 border border-brand-blue/10">
                 <Sparkles className="w-6 h-6 text-brand-blue" />
               </span>
-              <h2 className="text-xl font-bold text-brand-dark mb-1">Ask Forge anything</h2>
+              <h2 className="text-xl font-bold text-brand-dark mb-1">Ask OrgForge anything</h2>
               <p className="text-xs font-medium text-slate-500 max-w-md mb-7">
                 Build agents or make governed org changes in natural language — pick a starter below or type your own.
               </p>
@@ -687,7 +687,7 @@ export default function ChatPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={1}
-              placeholder="Ask Forge to build an agent or make an org change…"
+              placeholder="Ask OrgForge to build an agent or make an org change…"
               className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-surface/60 px-4 py-3 text-sm text-brand-dark placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue transition-shadow max-h-40"
               style={{ minHeight: 44 }}
             />

@@ -24,7 +24,7 @@ const ORG_TYPE_LABEL: Record<OrgSummary['orgType'], string> = {
 const ORG_TYPE_ICON = { production: Zap, sandbox: Cloud, scratch: FlaskConical };
 
 /**
- * Top bar (plan §6.1): FORGE wordmark, live org pill (type-aware, global
+ * Top bar (plan §6.1): ORG FORGE wordmark, live org pill (type-aware, global
  * switcher — switching orgs confirms first, EC-25), avatar menu with sign-out.
  * Refreshes the org list on mount so the pill stays live across pages.
  */
@@ -184,7 +184,7 @@ export default function Header({ onOpenMobileNav, isMobileNavOpen }: HeaderProps
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-brand-dark truncate">{email || 'Signed in'}</p>
                 <p className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <User className="w-3 h-3" /> Forge
+                  <User className="w-3 h-3" /> OrgForge
                 </p>
               </div>
             </div>

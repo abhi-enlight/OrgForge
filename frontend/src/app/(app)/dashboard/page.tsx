@@ -66,7 +66,7 @@ function greetingForToday(): string {
 }
 
 /**
- * Dashboard (plan §6.2) — the calm home. One hero action (Ask Forge), three
+ * Dashboard (plan §6.2) — the calm home. One hero action (Ask OrgForge), three
  * clickable stat tiles, one attention banner (only when something is wrong),
  * and one unified activity feed. Empty states collapse the page to a single
  * CTA per the "not too much" rule (§6.0).
@@ -227,7 +227,7 @@ function DashboardContent() {
           Connect Salesforce to get started
         </h1>
         <p className="mt-3 text-slate-500 max-w-md">
-          Forge builds and deploys AI agents, and makes governed org changes. Connect your org —
+          OrgForge builds and deploys AI agents, and makes governed org changes. Connect your org —
           everything else runs in the background.
         </p>
         <div className="mt-8 flex gap-3">
@@ -315,7 +315,7 @@ function DashboardContent() {
           className="group inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-brand-blue text-white font-semibold shadow-glow hover:bg-brand-blue-hover transition-[background-color,transform] hover:scale-[1.02]"
         >
           <Sparkles className="w-4 h-4" />
-          Ask Forge
+          Ask OrgForge
           <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
         </button>
       </div>
