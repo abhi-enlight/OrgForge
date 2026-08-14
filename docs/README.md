@@ -19,10 +19,14 @@ Welcome to the documentation for **Forge** — the unified platform combining ag
 - [`PRD.md`](./specifications/PRD.md) — Primary product requirements document for the unified platform.
 - [`PRD_COMPLIANCE.md`](./specifications/PRD_COMPLIANCE.md) — Requirements traceability matrix (48 OrgForge + 10 Agentforge FRs).
 - [`IMPLEMENTATION_PLAN.md`](./specifications/IMPLEMENTATION_PLAN.md) — Master implementation plan, pass tracker, and progress log.
+- [`FUTURE_IMPLEMENTATION.md`](./specifications/FUTURE_IMPLEMENTATION.md) — Index of next-version (Phase 6+) work — scheduled items with pointers to their self-contained plans.
 
 ### 🚀 Operations & Rollout (`docs/operations/`)
 - [`PHASE5_PLAN.md`](./operations/PHASE5_PLAN.md) — Phase 5 rollout runbook (canary, soak metrics, legacy retirement).
 - [`LANDING_REDESIGN_PLAN.md`](./operations/LANDING_REDESIGN_PLAN.md) — Landing page blueprint & visual overhaul plan.
+
+### 🔧 Setup (`docs/setup/`)
+- [`packaged_eca_setup.md`](./setup/packaged_eca_setup.md) — Installing the OrgForge Connector package (install links, access grants, verification, troubleshooting).
 
 ### 📁 Archived / Legacy (`docs/legacy/`)
 - [`Agentforge_PRD.md`](./legacy/Agentforge_PRD.md) — Historical Agentforge PRD v6.0.

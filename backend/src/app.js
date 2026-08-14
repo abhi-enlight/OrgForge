@@ -2,7 +2,6 @@ import 'dotenv/config';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
-import session from 'express-session';
 import morgan from 'morgan';
 
 /**
@@ -11,13 +10,11 @@ import morgan from 'morgan';
  *
  * @param {object} [opts]
  * @param {boolean} [opts.enableOrgForge] - override FORGE_UNIFIED_API flag
- * @param {boolean} [opts.enableAgentforge] - override FORGE_MOUNT_AGENTFORGE flag
  * @returns {import('express').Express}
  */
 export async function createApp(opts = {}) {
   const app = express();
   const enableOrgForge = opts.enableOrgForge ?? process.env.FORGE_UNIFIED_API === 'on';
-  const enableAgentforge = opts.enableAgentforge ?? process.env.FORGE_MOUNT_AGENTFORGE === 'on';
 
   // ── Security middleware (OrgForge baseline, plan §8.5) ───────────────────
   app.set('trust proxy', 1);
@@ -27,35 +24,6 @@ export async function createApp(opts = {}) {
   app.use(cors({ origin: corsOrigins, credentials: true }));
   app.use(express.json({ limit: '10mb' }));
   app.use(morgan('combined'));
-
-  // ── Transition-only session support (plan §8.4, §14.2) ──────────────────
-  // Agentforge's legacy OAuth flow stores its PKCE verifier in express-session
-  // (ported from the legacy Agentforge index.js). ONLY the legacy /api/auth
-  // router needs it, so the middleware and its secret requirement are gated on
-  // the Agentforge mount. The unified Supabase + Redis-PKCE flow (§8.2)
-  // replaces this entirely; when the Agentforge mount is removed (Phase 5)
-  // this block is deleted with it.
-  if (enableAgentforge) {
-    let sessionSecret = process.env.SESSION_SECRET;
-    if (!sessionSecret) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('SESSION_SECRET is required in production while the Agentforge transition mount is active');
-      }
-      sessionSecret = 'transition-session-secret-dev-only';
-    }
-    app.use(
-      session({
-        secret: sessionSecret,
-        resave: false,
-        saveUninitialized: false,
-        cookie: {
-          secure: process.env.NODE_ENV === 'production',
-          httpOnly: true,
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        },
-      })
-    );
-  }
 
   // ── Health (liveness + forge.* DB readiness, plan §10.1) ───────────────────
   const { healthRouter } = await import('./routes/health.js');
@@ -124,26 +92,6 @@ export async function createApp(opts = {}) {
     }
   } else {
     console.log('[forge-api] OrgForge capability routers NOT mounted (set FORGE_UNIFIED_API=on in Phase 2)');
-  }
-
-  if (enableAgentforge) {
-    console.log('[forge-api] mounting Agentforge capability routers (FORGE_MOUNT_AGENTFORGE=on)');
-    try {
-      // Agentforge routers are first-class modules in this repo
-      // (api/src/agentforge) — native ESM imports (plan §5.2 compat adapter no
-      // longer needed). Legacy paths mirrored for one release cycle (§5.1,
-      // §10.1 aliases): auth at /api/auth, org-health at /api/org.
-      const agentAuthRouter = (await import('./agentforge/routes/auth.js')).default;
-      const agentOrgHealthRouter = (await import('./agentforge/routes/orgHealth.js')).default;
-
-      app.use('/api/auth', agentAuthRouter);
-      app.use('/api/org', agentOrgHealthRouter);
-    } catch (err) {
-      console.error('[forge-api] failed to mount Agentforge routers:', err.message);
-      throw err;
-    }
-  } else {
-    console.log('[forge-api] Agentforge routers NOT mounted (set FORGE_MOUNT_AGENTFORGE=on in Phase 2)');
   }
 
   // ── JSON 404 + sanitized error handler (OrgForge baseline) ───────────────

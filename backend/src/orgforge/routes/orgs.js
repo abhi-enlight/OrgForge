@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
 const requireAuth = createAuthMiddleware();
 import { orgIndexQueue, redisConnection } from '../jobs/queue.js';
-import { getOrgCredentials } from '../services/orgCredentials.js';
+import { getOrgCredentials } from '@forge/org-connections';
 import { salesforceClient } from '../services/salesforceClient.js';
 
 const router = express.Router();
@@ -181,6 +181,16 @@ router.get('/:orgId/package-health', async (req, res) => {
     }
     res.json(payload);
   } catch (err) {
+    // getOrgCredentials throws 401 when the stored Salesforce refresh token is
+    // dead (EC-10) — surface the ORG_RECONNECT_REQUIRED discriminator so the
+    // frontend shows a "Reconnect Salesforce" CTA instead of signing the user
+    // out (a bare 401 is treated as session expiry by apiFetch).
+    if (err.status === 401) {
+      return res.status(401).json({
+        error: 'Reconnect this org. Salesforce access could not be refreshed',
+        code: 'ORG_RECONNECT_REQUIRED',
+      });
+    }
     console.error('Package health check failed:', err.message);
     res.status(500).json({ error: 'Failed to check package health' });
   }

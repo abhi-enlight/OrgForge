@@ -79,7 +79,7 @@ export default function PackageRequiredGate({
         </span>
         <h1 className="text-xl font-bold text-brand-dark tracking-tight">Connector status unknown</h1>
         <p className="mt-2 text-sm text-slate-500 leading-relaxed">
-          We couldn&apos;t verify the connector package in {orgAlias || 'your org'} — usually the
+          We couldn&apos;t verify the connector package in {orgAlias || 'your org'}. Usually the
           Salesforce connection needs reconnecting.
         </p>
         <div className="mt-7 flex items-center justify-center gap-2.5">
@@ -120,7 +120,7 @@ export default function PackageRequiredGate({
               </h1>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                 {orgAlias ? `The OrgForge Connector package isn't installed in ${orgAlias}. ` : ''}
-                Chat stays locked until it&apos;s installed — install it once (as a System
+                Chat stays locked until it&apos;s installed. Install it once (as a System
                 Administrator) and you&apos;ll get access immediately.
               </p>
             </div>
@@ -141,7 +141,7 @@ export default function PackageRequiredGate({
               <p className="text-xs text-slate-500 leading-relaxed mb-3">
                 Opens the Salesforce package installer. You need{' '}
                 <strong className="font-semibold text-slate-700">System Administrator</strong>{' '}
-                privileges — choose <em className="not-italic font-medium text-slate-700">Install for All Users</em>.
+                privileges. Choose <em className="not-italic font-medium text-slate-700">Install for All Users</em>.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <a
@@ -177,7 +177,7 @@ export default function PackageRequiredGate({
               </h4>
               <p className="text-xs text-slate-500 leading-relaxed">
                 In <strong className="font-semibold text-slate-700">Setup → External Client App Manager</strong>, open{' '}
-                <em className="not-italic font-medium text-slate-700">OrgForge by Enlight Lab</em> and set{' '}
+                <em className="not-italic font-medium text-slate-700">Forge by Enlight Lab</em> and set{' '}
                 <strong className="font-semibold text-slate-700">Permitted Users</strong> to{' '}
                 <em className="not-italic font-medium text-slate-700">All users may self-authorize</em> (or assign the
                 admin-approved permission set).
@@ -199,8 +199,7 @@ export default function PackageRequiredGate({
                 size="md"
                 leftIcon={<RefreshCw className="w-4 h-4" />}
                 onClick={onRecheck}
-              >
-                I&apos;ve installed it — Re-check
+              >                    Re-check after installing
               </Button>
             </div>
           </div>
@@ -209,7 +208,7 @@ export default function PackageRequiredGate({
         {/* Footer */}
         <div className="px-6 py-3.5 bg-slate-50/60 border-t border-brand-border flex items-center justify-between gap-3">
           <span className="text-[10px] font-mono text-slate-400">
-            package {health?.packageVersionId || '…'} · target {health?.orgType?.toUpperCase() || '—'}
+            package {health?.packageVersionId || '…'} · target {health?.orgType?.toUpperCase() || '–'}
           </span>
           <Link
             href="/settings"

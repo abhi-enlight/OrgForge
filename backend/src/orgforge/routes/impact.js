@@ -2,7 +2,7 @@ import express from 'express';
 import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
 const requireAuth = createAuthMiddleware();
 import { impactAnalyzer } from '../services/impactAnalyzer.js';
-import { getOrgCredentials } from '../services/orgCredentials.js';
+import { getOrgCredentials } from '@forge/org-connections';
 
 const router = express.Router();
 router.use(requireAuth, tenantIsolation);
@@ -38,6 +38,15 @@ router.post('/:intentId/impact-brief', async (req, res) => {
     res.json(impactBrief);
   } catch (error) {
     console.error('Impact Error:', error);
+    // getOrgCredentials throws 401 when the stored refresh token is dead
+    // (EC-10) — a bare 401 would be read by apiFetch as session expiry and
+    // sign the user out. Discriminate it as ORG_RECONNECT_REQUIRED instead.
+    if (error.status === 401) {
+      return res.status(401).json({
+        error: 'Reconnect this org. Salesforce access could not be refreshed',
+        code: 'ORG_RECONNECT_REQUIRED',
+      });
+    }
     // Never leak internal error details (messages, stacks, Salesforce
     // internals) to the client. Known client-class failures (err.status set)
     // keep their message; everything else gets a sanitized generic response.

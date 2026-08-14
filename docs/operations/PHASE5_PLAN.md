@@ -1,17 +1,18 @@
 # Forge — Phase 5 Plan (Canary · Soak · Decommission)
 
 **Status:** DRAFT — Phase 5 is the only remaining product phase; every item below is gated on the Phase 1–4 code being proven in a live org.
+**Update (2026-08-14):** the legacy frontend + API **deploys have already been stopped** — the old apps no longer ship (the repos were archived Pass 33; the prod targets are now dark). This happened before the 301 step, so **rollback-to-legacy is off the table** and the old origins must be pointed at the new domain soon or old bookmarks will hit dead URLs. The critical path is now: verify the new domain end-to-end → land the 301s → then the §4 cleanup + schema drop (S-8).
 **Grounded in:** [`unification_plan.md`](./unification_plan.md) §14 (Migration & Rollout), §15 (Testing & QA), §11.3 (brand/copy audit) · [`DECISIONS.md`](./DECISIONS.md) **D5** (zero-downtime cutover, old URLs must never 404) · [`api_contract.md`](./api_contract.md) §6 (Phase-5 changelog rule) · the real flags/aliases in `backend/src/app.js` + `frontend/src/lib/flags.ts`.
 
 ---
 
 ## 1. Gate criteria — nothing below starts until ALL are green
 
-- [ ] **Supabase tasks applied (🔷 MCP):** S-2 migration 008, S-1 migration 010, S-4 auth config confirmed, S-6 `forge.org_connections` backfilled; `/api/v1/health/db` reports `healthy` with `missingTables: []` (currently `migrationPending: true`).
-- [ ] **`backend/scripts/verifySchema.mjs`** extended for the forge schema and passing against the live project.
+- [ ] **Supabase tasks applied (🔷 MCP):** S-2 migration 008, S-1 migration 010, S-4 auth config confirmed, migrations 011–013 + **014** (EC-37 agent kind columns); `/api/v1/health/db` reports `healthy` with `missingTables: []`.
+- [x] **`backend/scripts/verifySchema.mjs`** extended for the full 12-table orgforge schema and passing — **done 2026-08-14**: all 12 tables (008 core, 011 github_connections, 012 memory columns, 013 data tables, 014 agent kind) with required-column checks (15 unit tests); live run verifies 11/12 ✅ — the only gap is migration **014 not yet applied** (change_records missing `kind`/`agent_name`/`agent_snapshot`), which lands with the Supabase task above.
 - [ ] **Live-agent e2e in a real sandbox** — org pipeline stages run end-to-end through `POST /api/v1/chat/stream` (build → deploy → test for `agent`; intent → gates → dry-run → deploy → signed record for `org_change`; `both` handoff).
 - [ ] **Dual-run regression matrix green** (§15.3) — every legacy flow's outcome proven equal by the new flow (artifacts diffed in sandbox; same change-record HMAC; same commit in the audit repo).
-- [ ] **Security tests green** (§15.4) — auth-bypass on mounted legacy routers, RLS attempt matrix, token-in-logs scan, SSE origin checks, prompt-injection steering.
+- [ ] **Security tests green** (§15.4) — auth-bypass on every remaining route (the legacy `/api/auth` + `/api/org` alias routers were deleted 2026-08-14, so that sub-item is obsolete), RLS attempt matrix, token-in-logs scan, SSE origin checks, prompt-injection steering. Runbook: `testing_flow.md` §7.
 - [ ] **Copy audit complete** (§11.3) — no `Agentforge`/`OrgForge` string in shipped UI (code identifiers kept), favicon/logo alt/metadataBase updated for the new domain.
 
 ---
@@ -45,8 +46,8 @@
 
 ### Stage 4 — Cutover (301s) & decommission (§4)
 
-- [ ] Point old domains at the new app with **301s, verified atomically with DNS** (D5 — no window where an old URL 404s).
-- [ ] Run the §4 retirement checklist; sign off; only then stop legacy deploys and drop legacy schema (S-7).
+- [ ] Point old domains at the new app with **301s, verified atomically with DNS** (D5 — no window where an old URL 404s). **Urgent now:** the legacy deploys are already stopped, so old origins currently serve nothing — verify the new domain end-to-end and land the 301s.
+- [ ] Run the §4 retirement checklist; sign off; only then drop legacy schema (S-8).
 
 ---
 
@@ -75,19 +76,19 @@
 ### 4.1 Code removals
 - [x] **`@forge/compat` retired early (Pass 32)** — the one-folder native port converted Agentforge CJS→ESM (`backend/src/agentforge`) and OrgForge moved in (`backend/src/orgforge`), so no CJS router is mounted anymore; the package was deleted from workspaces + `backend/package.json`.
 - [x] **Legacy sibling repos archived (Pass 33, 2026-08-11)** — `OrgForge/` + `Agentforge/` moved to `/Users/abhi/Enlight/archive/` (reversible, README + restore commands included) after a full web+API product smoke; the unified app is fully self-contained with **zero out-of-repo references**. The §4.3 "stop legacy deploys" items below now refer only to the **deployed prod targets**, not to local code.
-- [ ] `backend/src/app.js` — remove the `enableAgentforge` block (`FORGE_MOUNT_AGENTFORGE`): the `/api/auth` + `/api/org` mounts (now in-repo ESM since Pass 32) **and** the transition-only `express-session` middleware block (it exists solely for the legacy Agentforge OAuth router).
-- [ ] Remove `FORGE_MOUNT_AGENTFORGE` from env files + docs; `FORGE_UNIFIED_API` stays (capability routers are the product now).
+- [x] **`backend/src/app.js` cleaned (2026-08-14)** — the `enableAgentforge` block is gone: the `/api/auth` + `/api/org` mounts and the transition-only `express-session` middleware block were removed; the dead alias routers (`backend/src/agentforge/routes/`) were deleted.
+- [x] **`FORGE_MOUNT_AGENTFORGE` removed (2026-08-14)** from env files, package scripts, and docs; `FORGE_UNIFIED_API` stays (capability routers are the product now).
 
 ### 4.2 Env / config
 - [x] **`JWT_SECRET` retired early (Pass 36)** — the ported Agentforge auth router no longer requires it at boot (lazy `requireJwtSecret()` fails at use only); `.env.example` rewritten with the consolidated env set (canonical names + legacy-alias fallbacks) and retired-secret notes.
-- [ ] Delete transition-only vars: `SESSION_SECRET`, `LEGACY_JWT_SECRET` (already documented "removed after Phase 5" in `.env.example`).
-- [ ] Prune `frontend` + `api` `.env.example` to the post-transition set; regenerate local `.env` without them.
-- [ ] Remove `express-session` dependency from `backend/package.json`.
+- [x] **Transition-only vars deleted (2026-08-14)** — `SESSION_SECRET`, `LEGACY_JWT_SECRET` (and `FRONTEND_URL`, used only by the deleted alias router) removed from `.env.example`/docs; `reLink` now no-ops without the secret.
+- [x] **Env examples pruned (2026-08-14)** — root `.env.example` + `deployment.md` swept to the post-transition set (local `.env` regeneration is a per-environment user step).
+- [x] **`express-session` dependency removed (2026-08-14)** from `backend/package.json`.
 
 ### 4.3 Domains & deploys (D5 — atomic, no 404s)
-- [ ] Verify the new domain end-to-end (login, connect, chat, agents, changes, settings).
+- [ ] Verify the new domain end-to-end (login, connect, chat, agents, changes, settings). **← the immediate next step**
 - [ ] **301 old domains** (Agentforge + OrgForge origins) → new domain; verify DNS + redirect atomically; log 404 rates on old origins for 48h (should be ~0).
-- [ ] Stop legacy frontend + API deploys **only after** 301s proven and traffic drained.
+- [x] **Stop legacy frontend + API deploys** — done early (2026-08-14, ahead of the 301 step): old prod targets no longer ship. Consequence: no rollback-to-legacy; the 301s above are now time-critical (old bookmarks currently hit nothing).
 - [ ] Remove legacy deploy targets (Render/Vercel) after sign-off.
 
 ### 4.4 Schema & data (S-7 — post sign-off only)
@@ -95,7 +96,7 @@
 - [ ] Optional: internal-identifier rename pass (package names, route prefixes, env var names, `AGENTS.md`) — cosmetic, non-blocking.
 
 ### 4.5 Docs
-- [ ] `api_contract.md` — strike the §4 alias paragraph, add the §7 changelog entry (Phase 5, breaking-by-design for legacy aliases only).
+- [x] **`api_contract.md` updated (2026-08-14)** — §4 alias paragraph struck, §7 changelog entry added (Phase 5, breaking-by-design for legacy aliases only); `API.md` + `TECH_STACK.md` swept.
 - [ ] `unification_plan.md` / `IMPLEMENTATION_PLAN.md` / `remaining_tasks.md` — mark Phases complete; `todo.md` P3 checked.
 - [ ] Brand/copy final grep on the **built bundle**: `grep -ri "orgforge\|agentforge" frontend/src` returns only deliberate code identifiers (contract §11.3).
 
@@ -105,10 +106,10 @@
 
 | Trigger | Action |
 |---|---|
-| P0/P1 bug in the unified app during canary | Flip `NEXT_PUBLIC_FORGE_UNIFIED_FRONTEND=off` → users are back on legacy (still deployed); fix and re-canary |
-| API regression (5xx spike, data corruption) | Revert the API deploy; aliases still mounted → legacy frontends unaffected |
-| Post-301 issue | Revert the 301 (DNS flip back) — legacy apps still deployed until sign-off, so the cutover is reversible |
-| DB issue (S-2 storage) | Legacy schemas are intact until S-7 — fail over to the legacy apps; never delete before sign-off |
+| P0/P1 bug in the unified app during canary | Fix forward on the unified app and re-canary — **legacy deploys are stopped (2026-08-14), so there is no legacy fallback anymore** |
+| API regression (5xx spike, data corruption) | Revert the API deploy; the `/api/auth` + `/api/org` aliases stay mounted until §4.1, but no legacy frontend consumes them now |
+| Post-301 issue | Revert the 301 (DNS flip back) — **caveat:** with legacy deploys stopped, flipping back points old URLs at nothing; the 301s must be verified rock-solid before going live |
+| DB issue (S-2 storage) | Legacy schemas stay intact until S-8 — data is never deleted before sign-off (but the legacy apps that would serve it are down) |
 
 ---
 

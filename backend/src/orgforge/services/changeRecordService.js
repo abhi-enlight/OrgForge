@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { githubService } from './githubService.js';
-import { supabaseAdmin } from './supabaseClient.js';
+import { supabaseAdmin } from '../../lib/supabaseClients.js';
 
 export class ChangeRecordService {
   /**
@@ -19,6 +19,11 @@ export class ChangeRecordService {
       approverIdentity,
       deploymentId,
       gitCommitHash,
+      // EC-37: org changes default; agent builds pass kind 'agent_deploy'
+      // (+ agentName + the pre-deploy YAML snapshot).
+      kind: extras.kind || 'org_change',
+      agentName: extras.agentName || null,
+      agentSnapshot: extras.agentSnapshot || null,
       intent: intent || 'Unknown Intent',
       businessRationale: businessRationale || 'No rationale provided',
       userId,
@@ -66,6 +71,9 @@ export class ChangeRecordService {
       approver_identity: changeRecord.approverIdentity,
       git_commit_hash: changeRecord.gitCommitHash || null,
       signature_hash: changeRecord.signatureHash,
+      kind: changeRecord.kind || 'org_change',
+      agent_name: changeRecord.agentName || null,
+      agent_snapshot: changeRecord.agentSnapshot || null,
       intent: changeRecord.intent,
       business_rationale: changeRecord.businessRationale,
       status: 'DEPLOYED',
@@ -130,9 +138,11 @@ export class ChangeRecordService {
 
 ## Metadata
 - **Timestamp:** ${changeRecord.timestamp}
+- **Kind:** ${changeRecord.kind || 'org_change'}
 - **Change Set ID:** ${changeRecord.changeSetId}
 - **Deployment ID:** ${changeRecord.deploymentId}
-- **Approver Identity:** ${changeRecord.approverIdentity}
+${changeRecord.agentName ? `- **Agent:** ${changeRecord.agentName}
+` : ''}- **Approver Identity:** ${changeRecord.approverIdentity}
 - **Git Commit Hash:** ${changeRecord.gitCommitHash || 'N/A'}
 
 ## Business Context

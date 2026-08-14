@@ -66,7 +66,7 @@ export function createAgentsRouter({
     if (CachedClient) return CachedClient;
     CachedClient = salesforceClient;
     if (!CachedClient || typeof CachedClient.getAgents !== 'function') {
-      const err = new Error('Agentforge SalesforceClient not found — is the Agentforge engine present?');
+      const err = new Error('Agentforge SalesforceClient not found. Is the Agentforge engine present?');
       err.status = 503;
       throw err;
     }
@@ -170,7 +170,13 @@ export function createAgentsRouter({
           return res.status(404).json({ error: 'Org connection not found' });
         }
         if (err.status === 401) {
-          return res.status(401).json({ error: 'Reconnect this org — Salesforce access could not be refreshed' });
+          // ORG_RECONNECT_REQUIRED discriminates this 401 from a session-auth
+          // 401: the user's app session is fine — only the Salesforce org
+          // needs reconnecting (EC-10).
+          return res.status(401).json({
+            error: 'Reconnect this org. Salesforce access could not be refreshed',
+            code: 'ORG_RECONNECT_REQUIRED',
+          });
         }
         throw err;
       }
@@ -251,7 +257,13 @@ export function createAgentsRouter({
           return res.status(404).json({ error: 'Org connection not found' });
         }
         if (err.status === 401) {
-          return res.status(401).json({ error: 'Reconnect this org — Salesforce access could not be refreshed' });
+          // ORG_RECONNECT_REQUIRED discriminates this 401 from a session-auth
+          // 401: the user's app session is fine — only the Salesforce org
+          // needs reconnecting (EC-10).
+          return res.status(401).json({
+            error: 'Reconnect this org. Salesforce access could not be refreshed',
+            code: 'ORG_RECONNECT_REQUIRED',
+          });
         }
         throw err;
       }

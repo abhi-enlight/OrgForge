@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { RotateCcw, ArrowRight, FileArchive, RefreshCw, AlertTriangle } from 'lucide-react';
+import { RotateCcw, ArrowRight, FileArchive, RefreshCw, AlertTriangle, Lightbulb } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
@@ -104,8 +104,42 @@ export default function RollbackPanel({ onProceedToDeploy, intentId, orgId, arti
         </div>
         <h2 className="text-2xl font-bold tracking-tight text-brand-dark">Capture Pre-Change Metadata State</h2>
         <p className="text-sm text-slate-500 leading-relaxed">
-          OrgForge queries the target org via Metadata API <code className="font-mono bg-brand-surface px-1 py-0.5 rounded border border-brand-border">retrieve()</code> to capture the pre-change state before deployment.
+          Forge queries the target org via Metadata API <code className="font-mono bg-brand-surface px-1 py-0.5 rounded border border-brand-border">retrieve()</code> to capture the pre-change state before deployment.
         </p>
+      </div>
+
+      {/* In plain English — what this step does and why it matters */}
+      <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200/70 space-y-3">
+        <div className="flex items-center gap-2">
+          <Lightbulb className="w-4 h-4 text-brand-blue shrink-0" />
+          <span className="text-xs font-bold uppercase tracking-[0.12em] text-brand-blue">In plain English</span>
+        </div>
+        <div className="space-y-2.5 text-xs text-slate-600 leading-relaxed">
+          <p>
+            <span className="font-bold text-brand-dark">What this does:</span>{' '}
+            Before anything changes in your org, Forge captures the current state of the
+            components in this change (exactly as they are right now) and stores it as
+            a secure snapshot (a zip package with a checksum, so we can prove it&apos;s intact).
+            Think of it as photographing a document before you start editing it.
+          </p>
+          <p>
+            <span className="font-bold text-brand-dark">Why it matters:</span>{' '}
+            If the change causes a problem after it&apos;s deployed, you can restore the
+            pre-change state with a single command instead of rebuilding it by hand. The
+            snapshot is:
+          </p>
+          <ul className="space-y-1.5 pl-1">
+            <li>• Scoped to this change: only the components being modified, so it&apos;s fast and small.</li>
+            <li>• Stored securely in Forge&apos;s private vault, linked to this session&apos;s audit record.</li>
+            <li>• The foundation of every later rollback: a change without a snapshot can&apos;t be reverted.</li>
+          </ul>
+          <p>
+            <span className="font-bold text-brand-dark">What you need to do:</span>{' '}
+            Click <span className="font-semibold text-brand-dark">Retrieve Pre-Change State</span>,
+            then acknowledge the snapshot once it&apos;s saved. For destructive changes (deletes),
+            you&apos;ll confirm you understand that a metadata rollback cannot restore deleted data.
+          </p>
+        </div>
       </div>
 
       {!hasRun ? (

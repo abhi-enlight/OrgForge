@@ -96,7 +96,7 @@ verbatim — see §4.
 | POST | `/api/v1/chat/route` | JWT + tenant | `{ message: string (1–50 000), pinned?: 'agent'\|'org_change'\|'both'\|'clarify' }` | `200 { capability, confidence, overrideSource? }` |
 
 Standalone classifier (Gemini + deterministic §7.1 overrides). Every decision is logged to
-`forge.routing_log` (prompt hash, capability, confidence, override source) — best-effort;
+`orgforge.routing_log` (prompt hash, capability, confidence, override source) — best-effort;
 the route answers even while migration 008 is pending.
 
 ### 2.5 Copilot stream (SSE)
@@ -126,9 +126,9 @@ the route answers even while migration 008 is pending.
   gates + dry run remain the safety net).
   - MulterError / allowlist rejection / unreadable file / empty document extraction → **400 plain JSON**.
 - Engine frames are capability-tagged; `both` runs agent → org sequentially (EC-23).
-- Session spine: capability segments persisted to `forge.chat_sessions` **after** engine work
+- Session spine: capability segments + bounded transcript persisted to `orgforge.chat_sessions` **after** engine work (durable context memory — Pass 47; `transcript`/`context_summary` from migration 012; cold starts resume from summary + recent verbatim tail)
   (a persistence failure surfaces as an error frame, never blocks a deployment).
-- `forge.ai_logs` writes are fire-and-forget (never fail the request) — plan §3/§7.3.
+- `orgforge.ai_logs` writes are fire-and-forget (never fail the request) — plan §3/§7.3.
 
 ### 2.6 Agents
 
@@ -139,14 +139,29 @@ the route answers even while migration 008 is pending.
 
 - `:developerName` = the AiAuthoringBundle fullName (≤200 chars); `orgId` required. Retrieves the **generated `.agent` YAML** for one agent via Metadata API `retrieve()` (async zip job, ~3s polls — slow; clients should use a heavy timeout). `404` when the bundle is not retrievable (built outside Agentforce or deleted). No server cache — the bundle can change on every deploy.
 
-### 2.7 Conversation reset
+### 2.7 Session context (reset / history / resume)
 
 | Method | Path | Auth | Request | Response |
 |---|---|---|---|---|
 | DELETE | `/api/v1/chat/:contextId` | JWT + tenant | `?orgId=<18-char id>` | `200 { success: true }` |
+| GET | `/api/v1/chat/sessions` | JWT + tenant | `?orgId=<18-char id>` | `200 { sessions: [{ sessionId, updatedAt, lastSummary, hasSummary }] }` |
+| GET | `/api/v1/chat/sessions/:sessionId` | JWT + tenant | `?orgId=<18-char id>` | `200 { sessionId, transcript, contextSummary, segments, updatedAt }` · `404` foreign/unknown |
 
 - `contextId` = the client's session id (i.e. `default` when the stream was called without an explicit `sessionId`); `orgId` required. Reserved names `stream` / `route` → 400.
 - Explicit conversation reset (legacy Agentforge `DELETE /api/chat/:contextId` parity): aborts any in-flight generation, drops the live `ConversationManager`, and clears the Redis busy-lock + persisted state — the escape hatch a crash-stuck request needs (without it, a dead run blocks the conversation with 409s for up to the 10-min lock TTL).
+- `GET /chat/sessions` — tenant-scoped light list (newest `updated_at`
+  first, limit clamped 1–50) for the History picker: `lastSummary` (newest
+  capability-segment summary) + `hasSummary` (flash-compressed head present),
+  never the full transcript. Missing table (migration 008 pending) →
+  `200 { sessions: [] }` (S-2 degrade).
+- `GET /chat/sessions/:sessionId` — full-spine restore for resume
+  (`transcript` parsed from both JSONB arrays and legacy string-encoded
+  forms, plus `contextSummary` + capability segments). Triple-scoped via the
+  shared spine lookup — another user's/org's session reads as `404`, never a
+  leak. Lifecycle: session ids live in the browser's `sessionStorage`
+  (per-tab isolation); the nightly `session-cleanup` job
+  (`CHAT_SESSIONS_RETENTION_DAYS`, default 7) garbage-collects orphaned rows
+  (Pass 49/50).
 - Session key composed exactly like chat/stream's (`{userId}|{orgId}|{contextId}`). Idempotent: resetting a free/absent conversation is a no-op success.
 - Scope note: the abort is best-effort/in-process (the live Gemini session is per-instance); the Redis clear is cross-instance.
 
@@ -196,8 +211,8 @@ the route answers even while migration 008 is pending.
 All OrgForge v2.0 endpoints are mounted **unchanged** under the same `/api/v1` base — the
 contract is preserved verbatim (see §4). Changes around it:
 - **Auth model:** OrgForge's session-cookie auth → Supabase JWT bearer + `tenantIsolation`
-  (the transition `express-session` middleware exists only while the Agentforge mount is
-  active and is deleted in Phase 5).
+  (the transition `express-session` middleware and the Agentforge mount it served were
+  removed in Phase 5, 2026-08-14).
 - `/health/db` extended from OrgForge's table check to the six `forge.*` tables with
   503/degraded semantics (§2.1).
 - New unified endpoints added: diagnostics (§2.3), chat/route (§2.4), chat/stream (§2.5),
@@ -223,9 +238,12 @@ contract is preserved verbatim (see §4). Changes around it:
 
 These are gated on `FORGE_UNIFIED_API=on` (capability phase flag, plan §5.1).
 
-**Transition aliases (Agentforge, gated on `FORGE_MOUNT_AGENTFORGE=on`):** `/api/auth`
-(Agentforge auth router) and `/api/org` (orgHealth) mirror the legacy paths for one release
-cycle. They serve the **legacy frontend only** and are deleted in Phase 5.
+~~**Transition aliases (Agentforge, gated on `FORGE_MOUNT_AGENTFORGE=on`):** `/api/auth`~~
+~~(Agentforge auth router) and `/api/org` (orgHealth) mirror the legacy paths for one release~~
+~~cycle. They serve the **legacy frontend only** and are deleted in Phase 5.~~
+**Removed (Phase 5, 2026-08-14):** the `/api/auth` + `/api/org` transition aliases and the
+`FORGE_MOUNT_AGENTFORGE` gate are gone — the legacy apps are decommissioned. No `/api/v1/*`
+consumer is affected.
 
 ---
 
@@ -242,8 +260,10 @@ cycle. They serve the **legacy frontend only** and are deleted in Phase 5.
 - **Additive-only** until Phase 5 sign-off: new fields are always additive; no field removal,
   renames, or response-shape changes without a changelog entry in §7 + a migration note.
 - New endpoints get a row in §2 and a mapping in §3 when they replace a legacy surface.
-- When Phase 5 removes the transition mounts (`/api/auth`, `/api/org`), strike §4's alias
-  paragraph and bump the changelog — no consumer of `/api/v1/*` is affected.
+- ~~When Phase 5 removes the transition mounts (`/api/auth`, `/api/org`), strike §4's alias
+  paragraph and bump the changelog — no consumer of `/api/v1/*` is affected.~~
+- **Done (2026-08-14):** the transition mounts were removed; §4's alias paragraph is struck
+  above and the changelog was bumped — no consumer of `/api/v1/*` was affected.
 
 ## 7. Forward changelog
 
@@ -251,6 +271,12 @@ Dated entries for every contract change (per §6). Newest first.
 
 | Date | Change | Breaking? | Migration note |
 |---|---|---|---|
+| EC-37 (2026-08-14) | **Added** `kind` (`'org_change'` default / `'agent_deploy'`), `agentName`, `agentSnapshot` to `GET /api/v1/change-records` responses — agent deploys now produce signed records via the agent engine (`deploy_success` → signed `agent_deploy` record; failures surface as `deploy_warning`, never block the stream). Additive fields; existing org_change rows default to `kind: 'org_change'` | no — additive | Migration `014_change_records_agent_kind.sql` (adds `kind`/`agent_name`/`agent_snapshot` to `orgforge.change_records`); 🔷 apply via MCP |
+| Phase 5 decommission (2026-08-14) | **Removed** the legacy transition aliases `/api/auth` + `/api/org` (Agentforge auth + orgHealth routers) and the `FORGE_MOUNT_AGENTFORGE` gate; the `express-session` middleware and its `SESSION_SECRET` requirement are gone (§4 alias paragraph struck). Only the legacy surfaces were removed — no `/api/v1/*` consumer is affected | no — breaking-by-design for the legacy aliases only | None |
+| Pass 52 (Aug 2026) | **Docs only** — §2.5/§2.7 updated for Passes 46–51 (context memory, session history/resume, expiry job, schema rename `forge.*` → `orgforge.*`); contract shape unchanged | no | None |
+| Pass 50 (Aug 2026) | **Added** `GET /api/v1/chat/sessions` + `GET /api/v1/chat/sessions/:sessionId` (§2.7) — tenant-scoped session list (light: `sessionId`, `updatedAt`, `lastSummary`, `hasSummary`; missing table → `[]`) and full-spine restore (transcript parsed from JSONB + legacy string forms; foreign/unknown → 404). Powers the History picker resume flow | no — additive (new GETs; existing reset/stream untouched) | Reads `orgforge.chat_sessions` (008 + 012); 012 adds `transcript`/`context_summary` columns |
+| Pass 47 (Aug 2026) | **Behavioral (documentation)** — session spine now persists a bounded text-only `transcript` + flash-compressed `context_summary` per turn (migration 012); agent engine resumes cold starts from summary + recent tail; org engine gets the `priorContext` digest. No wire-shape change to §2.5 — the stream contract is unchanged | no — additive (durable memory behind the same endpoint) | 012 adds `transcript JSONB` + `context_summary TEXT` to `orgforge.chat_sessions` |
+| Pass 46 (Aug 2026) | **Behavioral** — credential-refresh 401s now carry `code: 'ORG_RECONNECT_REQUIRED'` (§2.3, §2.5, agents, orgforge routes) so clients can distinguish a Salesforce-org reconnect from session expiry; `error` wording normalized (em-dash removed). Additive `code` field; clients that ignore it keep current behavior | no — additive field | None |
 | Pass 27 (Aug 2026) | **Added** `GET /api/v1/agents/:developerName/yaml` (§2.6) — the generated `.agent` YAML for one agent (PRD FR-5 "detail drawer with YAML"); Metadata API AiAuthoringBundle retrieve via the wrapped Agentforge SalesforceClient (`retrieveAgent`), tenant-scoped creds + SSRF guard; `404 { error, detail }` when not retrievable. Frontend: **YAML detail drawer** on /agents (slide-in, loading/error/retry, Copy, Edit-in-chat) | no — additive (fills a documented PRD gap) | No schema change; reads live org metadata on demand |
 | Pass 25 (Aug 2026) | **Added** `GET /api/v1/refusal-logs` (§2.8) — dedicated refusal audit trail (PRD FR-5 "refusal log" + OrgForge Group 7); tenant-scoped through `change_intents` (the table has no user column); optional `?orgId`; missing-table → `200 { refusals: [], note }` (S-3), other DB errors → 500. Frontend: **Refusals** tab on Changes & Audit (gate badge, plain-language reason, missing evidence, unblock path, org, discuss-in-chat) | no — additive (fills a documented PRD gap) | Reads the legacy `public.refusal_logs`; no schema change |
 | Pass 22 (Aug 2026) | **Behavioral** — diagnostics caching (§2.3): a run detecting `package.installed=false` is never pinned (row cleared, not cached) and a cached package-missing verdict is treated as stale; every read re-checks until installed (banner self-heals, no manual `POST /recheck`). Removed from §5 gaps | no — additive (fills a documented gap); strictly more accurate verdicts | No migration; cache rows self-correct on next read |

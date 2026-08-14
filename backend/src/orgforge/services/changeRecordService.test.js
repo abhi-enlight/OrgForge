@@ -63,6 +63,29 @@ describe('assembleChangeRecord', () => {
     assert.deepEqual(rec.skillsUsed, []);
     assert.deepEqual(rec.artifacts, []);
   });
+
+  it('defaults to kind org_change with no agent fields (EC-37)', () => {
+    const rec = svc.assembleChangeRecord('cs', 'a@b.com', 'dep', null, 'i', 'r', 'uid', 'oid');
+    assert.equal(rec.kind, 'org_change');
+    assert.equal(rec.agentName, null);
+    assert.equal(rec.agentSnapshot, null);
+  });
+
+  it('carries agent_deploy kind + snapshot from extras (EC-37)', () => {
+    const rec = svc.assembleChangeRecord(
+      'cs', null, '0Af000000000002', null, 'Build a support agent', 'Agent deployment via Copilot',
+      'uid', 'oid', null,
+      {
+        kind: 'agent_deploy',
+        agentName: 'Support_Agent_1',
+        agentSnapshot: { yaml: 'name: Support_Agent_1\n', deployedAt: '2026-08-14T00:00:00.000Z' },
+      }
+    );
+    assert.equal(rec.kind, 'agent_deploy');
+    assert.equal(rec.agentName, 'Support_Agent_1');
+    assert.equal(rec.agentSnapshot.yaml, 'name: Support_Agent_1\n');
+    assert.equal(rec.artifacts.length, 0);
+  });
 });
 
 describe('sign', () => {

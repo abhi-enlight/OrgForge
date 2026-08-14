@@ -32,6 +32,7 @@ export function tenantIsolation(req, res, next) {
       persistSession: false,
       autoRefreshToken: false,
     },
+    db: { schema: 'orgforge' },
   });
 
   next();

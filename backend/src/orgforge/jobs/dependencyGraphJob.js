@@ -1,7 +1,7 @@
 import { Worker } from 'bullmq';
 import { createRedisConnection } from './queue.js';
-import { supabaseAdmin } from '../services/supabaseClient.js';
-import { getOrgCredentials } from '../services/orgCredentials.js';
+import { supabaseAdmin } from '../../lib/supabaseClients.js';
+import { getOrgCredentials } from '@forge/org-connections';
 import { salesforceClient } from '../services/salesforceClient.js';
 import { isValidSfIdentifier } from '../utils/aiSafety.js';
 
@@ -21,7 +21,21 @@ const worker = new Worker('orgforge-dependency-graph', async job => {
   console.log(`Building dependency graph for org ${orgId}`);
 
   try {
-    const { accessToken, instanceUrl } = await getOrgCredentials(supabaseAdmin, tenantId, orgId);
+    // EC-10: a dead refresh token fails the job loudly AND flags the org
+    // disconnected so the user sees the "Reconnect" CTA on their next visit.
+    const { accessToken, instanceUrl } = await getOrgCredentials(supabaseAdmin, tenantId, orgId, {
+      onRefreshFailure: async () => {
+        try {
+          await supabaseAdmin
+            .from('org_connections')
+            .update({ disconnected_at: new Date().toISOString() })
+            .eq('org_id', orgId)
+            .eq('user_id', tenantId);
+        } catch (hookErr) {
+          console.warn('[dependencyGraphJob] mark-disconnected hook failed:', hookErr.message);
+        }
+      }
+    });
 
     // Components to resolve: a single named component (legacy call shape) or
     // every component the org index currently holds.

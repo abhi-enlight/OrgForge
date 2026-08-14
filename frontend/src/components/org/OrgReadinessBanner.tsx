@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   AlertTriangle,
+  ExternalLink,
   PackageOpen,
   RefreshCw,
   Settings2,
@@ -15,6 +16,7 @@ import {
 import { useActiveOrg } from '@/lib/org-context';
 import { EASE_OUT } from '@/lib/motion';
 import { useOrgReadiness, type ReadinessDiag } from '@/lib/orgReadiness';
+import ReconnectSalesforceNotice from '@/components/org/ReconnectSalesforceNotice';
 
 interface ReadinessItem {
   icon: React.ComponentType<{ className?: string }>;
@@ -35,8 +37,19 @@ function buildItems(diag: ReadinessDiag): ReadinessItem[] {
       icon: PackageOpen,
       text: (
         <>
-          Install the <strong className="font-semibold text-slate-700">OrgForge Connector</strong> package —{' '}
-          <span className="font-medium text-slate-600">chat stays locked until it is installed</span>.
+          Install the <strong className="font-semibold text-slate-700">OrgForge Connector</strong> package.{' '}
+          <span className="font-medium text-slate-600">Chat stays locked until it is installed</span>.
+          {diag.installUrl && (
+            <a
+              href={diag.installUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 font-semibold text-brand-blue hover:underline ml-1"
+            >
+              Get the install link
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
         </>
       ),
     });
@@ -80,7 +93,7 @@ function buildItems(diag: ReadinessDiag): ReadinessItem[] {
       icon: AlertTriangle,
       text: (
         <>
-          Agent building needs setup in this org —{' '}
+          Agent building needs setup in this org.{' '}
           <Link href="/settings" className="text-brand-blue font-medium hover:underline">
             open Settings → Advanced → Run diagnostics
           </Link>{' '}
@@ -109,7 +122,7 @@ export default function OrgReadinessBanner() {
   // orgId gates rendering below — a stale diag for a PREVIOUS org must never
   // flash here while an org switch is in flight (deferred resets fire after
   // paint). Same attribution guard the chat page uses for its capability chip.
-  const { diag, status, error, orgId, retry } = useOrgReadiness();
+  const { diag, status, error, orgId, retry, reconnectRequired } = useOrgReadiness();
   // null / another org ⇒ not dismissed for the current org (banner may show);
   // the current org's id ⇒ dismissed this session (hidden).
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
@@ -167,7 +180,12 @@ export default function OrgReadinessBanner() {
       aria-live="polite"
       className="mb-6 max-w-5xl mx-auto"
     >
-      {showError && (
+      {showError && (reconnectRequired ? (
+        // ORG_RECONNECT_REQUIRED — the org's Salesforce refresh token was
+        // rejected: a clear "Reconnect Salesforce" CTA (app session is fine,
+        // so this is never a sign-out). Retry re-runs the preflight in place.
+        <ReconnectSalesforceNotice message={error || undefined} onRetry={retry} />
+      ) : (
         <div className="flex items-start gap-3 rounded-2xl border border-brand-border bg-white px-4 py-3.5 shadow-soft">
           <span className="w-8 h-8 shrink-0 rounded-lg bg-brand-danger/10 text-brand-danger flex items-center justify-center">
             <AlertTriangle className="w-4 h-4" />
@@ -194,7 +212,7 @@ export default function OrgReadinessBanner() {
             </Link>
           </div>
         </div>
-      )}
+      ))}
 
       {showAttention && items.length > 0 && (
         <div className="rounded-2xl border border-brand-warning/30 bg-gradient-to-br from-amber-50 to-white shadow-soft overflow-hidden">
@@ -237,7 +255,7 @@ export default function OrgReadinessBanner() {
           </div>
           <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-2.5 border-t border-brand-warning/15 bg-white/60">
             <p className="text-[11px] text-slate-400">
-              Shown once per session — dismiss to continue without it.
+              Shown once per session. Dismiss to continue without it.
             </p>
             <Link
               href="/settings"

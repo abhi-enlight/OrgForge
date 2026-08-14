@@ -61,7 +61,7 @@ export function Hero() {
         <div className="lg:col-span-5">
           <Reveal variant="fade">
             <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-brand-blue">
-              OrgForge by Enlight Lab
+              Forge by Enlight Lab
             </p>
           </Reveal>
           <Reveal variant="fade-up" delay={0.08}>
@@ -71,8 +71,9 @@ export function Hero() {
           </Reveal>
           <Reveal delay={0.2}>
             <p className="mt-6 max-w-md text-lg leading-relaxed text-text-secondary">
-              Build Agentforce agents and ship governed org changes from one
-              conversation. Two skills, one assistant, fully signed.
+              For Salesforce admins and release managers: build Agentforce
+              agents and make governed org changes from one conversation.
+              Every change runs behind refusal gates with a signed audit trail.
             </p>
           </Reveal>
           <Reveal delay={0.3}>
@@ -81,14 +82,14 @@ export function Hero() {
                 href="/login"
                 className="group inline-flex items-center gap-2 rounded-full bg-brand-blue px-7 py-3.5 text-sm font-semibold text-white shadow-soft transition-all duration-200 hover:bg-brand-blue-hover hover:shadow-lift active:scale-[0.98]"
               >
-                Open OrgForge
+                Open Forge
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
               </Link>
               <a
-                href="#capabilities"
+                href="#how-it-works"
                 className="inline-flex items-center gap-2 rounded-full border border-brand-border bg-white px-7 py-3.5 text-sm font-semibold text-brand-dark transition-colors duration-200 hover:border-brand-blue hover:text-brand-blue"
               >
-                See what it does
+                See how it works
               </a>
             </div>
           </Reveal>

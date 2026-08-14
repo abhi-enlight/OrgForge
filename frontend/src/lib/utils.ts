@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-/** Merges Tailwind classes with conflict resolution (OrgForge convention). */
+/** Merges Tailwind classes with conflict resolution (Forge convention). */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -9,7 +9,7 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * Triggers a browser download of a text file using a Blob + anchor element.
  * Works for any text-based MIME type (text/csv, application/json, text/markdown).
- * Mirrors the OrgForge `lib/utils.ts` export convention (history page).
+ * Mirrors the Forge `lib/utils.ts` export convention (history page).
  */
 export function downloadTextFile(filename: string, content: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });

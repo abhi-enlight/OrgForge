@@ -17,19 +17,13 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  ExternalLink,
 } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, ApiError, ORG_RECONNECT_REQUIRED } from '@/lib/api';
 import { useActiveOrg } from '@/lib/org-context';
 import { cn } from '@/lib/utils';
 import GithubConnectCard from '@/components/settings/GithubConnectCard';
-
-interface OrgRow {
-  id: string;
-  alias?: string;
-  type?: string;
-  instanceUrl?: string;
-  components?: number;
-}
+import ReconnectSalesforceNotice from '@/components/org/ReconnectSalesforceNotice';
 
 const ORG_TYPE_CLASSES: Record<string, string> = {
   production: 'bg-brand-danger/10 text-brand-danger',
@@ -61,6 +55,11 @@ interface DiagResult {
   checkedAt?: string;
   cached?: boolean;
   cachedAt?: string;
+  /** Salesforce package-installer URL — present when the connector package is
+   *  missing (added by the diagnostics route) so Settings can link straight
+   *  to the install step instead of only reporting the gap. */
+  installUrl?: string;
+  packageVersionId?: string;
 }
 
 const STATE_META: Record<DiagResult['state'], { label: string; className: string }> = {
@@ -128,7 +127,7 @@ function SectionCard({ icon: Icon, title, subtitle, children }: {
  * PRD FR-5 §4.4).
  */
 export default function SettingsFlow() {
-  const { org, orgs, setOrgs, selectOrg } = useActiveOrg();
+  const { org, orgs, setOrgs, selectOrg, refreshOrgs } = useActiveOrg();
 
   // ── Connections ─────────────────────────────────────────────────────────
   const [orgsLoading, setOrgsLoading] = useState(true);
@@ -143,6 +142,9 @@ export default function SettingsFlow() {
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagRunning, setDiagRunning] = useState(false);
   const [diagError, setDiagError] = useState<string | null>(null);
+  // Backend error code — ORG_RECONNECT_REQUIRED renders a Reconnect Salesforce
+  // CTA instead of a bare error line (the app session is still valid).
+  const [diagErrorCode, setDiagErrorCode] = useState<string | null>(null);
   // Tracks the org the most recent fetch STARTED for — a response for a
   // superseded org is discarded (no out-of-order stale display on switch).
   const diagOrgRef = React.useRef<string | null>(null);
@@ -155,6 +157,7 @@ export default function SettingsFlow() {
       setDiagLoading(!force);
       setDiagRunning(force);
       setDiagError(null);
+      setDiagErrorCode(null);
       try {
         // force → POST /recheck (bypasses the 24h forge.diagnostics cache).
         const result = await apiFetch<DiagResult>(
@@ -168,6 +171,7 @@ export default function SettingsFlow() {
         if (diagOrgRef.current !== targetId) return;
         setDiag(null);
         setDiagError(err instanceof Error ? err.message : 'Diagnostics check failed');
+        setDiagErrorCode(err instanceof ApiError ? err.code ?? null : null);
       } finally {
         if (diagOrgRef.current === targetId) {
           setDiagLoading(false);
@@ -186,31 +190,27 @@ export default function SettingsFlow() {
       setDiag(null);
       setDiagOrgId(null);
       setDiagError(null);
+      setDiagErrorCode(null);
       loadDiagnostics(false);
     }, 0);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [org?.id]);
 
+  // Settings is the connection-management surface, so it always pulls FRESH
+  // from the shared provider's refreshOrgs (bypasses the session cache) —
+  // keeps the list accurate after connect/disconnect without a second fetch
+  // path.
   const loadOrgs = useCallback(async () => {
     try {
-      const { orgs: fetched } = await apiFetch<{ orgs: OrgRow[] }>('/api/v1/orgs');
-      const mapped = (fetched || []).map((o) => ({
-        id: o.id,
-        name: o.alias || o.id,
-        orgType: (['production', 'sandbox', 'scratch'].includes(o.type || '')
-          ? o.type
-          : 'production') as 'production' | 'sandbox' | 'scratch',
-        instanceUrl: o.instanceUrl,
-      }));
-      setOrgs(mapped);
+      await refreshOrgs();
       setOrgsError(null);
     } catch (err) {
       setOrgsError(err instanceof Error ? err.message : 'Failed to load org connections');
     } finally {
       setOrgsLoading(false);
     }
-  }, [setOrgs]);
+  }, [refreshOrgs]);
 
   useEffect(() => {
     // Deferred so state settles after mount (react-hooks/set-state-in-effect).
@@ -245,7 +245,7 @@ export default function SettingsFlow() {
       </div>
 
       {/* ── Connections ─────────────────────────────────────────────────── */}
-      <SectionCard icon={Plug} title="Connections" subtitle="Linked Salesforce orgs — the active org feeds both engines">
+      <SectionCard icon={Plug} title="Connections" subtitle="Linked Salesforce orgs. The active org feeds both engines">
         {orgsLoading ? (
           <div className="space-y-3">
             {[0, 1].map((i) => (
@@ -337,7 +337,17 @@ export default function SettingsFlow() {
                 <div className="h-[62px] rounded-xl bg-brand-surface/70 animate-pulse" />
               </div>
             ) : diagError ? (
-              <p className="text-sm text-slate-500">{diagError}</p>
+              // ORG_RECONNECT_REQUIRED → a clear Reconnect Salesforce CTA (the
+              // org's refresh token was rejected — re-link via OAuth).
+              diagErrorCode === ORG_RECONNECT_REQUIRED ? (
+                <ReconnectSalesforceNotice
+                  compact
+                  message={diagError}
+                  onRetry={() => loadDiagnostics(false)}
+                />
+              ) : (
+                <p className="text-sm text-slate-500">{diagError}</p>
+              )
             ) : diag && diagOrgId === org.id ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <CapabilityChip label="Agents" icon={Bot} status={diag.capability?.agents} />
@@ -371,7 +381,17 @@ export default function SettingsFlow() {
                 <div className="h-8 w-full rounded-lg bg-brand-surface/50 animate-pulse" />
               </div>
             ) : diagError ? (
-              <p className="text-sm text-slate-500">{diagError}</p>
+              // ORG_RECONNECT_REQUIRED → a clear Reconnect Salesforce CTA (the
+              // org's refresh token was rejected — re-link via OAuth).
+              diagErrorCode === ORG_RECONNECT_REQUIRED ? (
+                <ReconnectSalesforceNotice
+                  compact
+                  message={diagError}
+                  onRetry={() => loadDiagnostics(false)}
+                />
+              ) : (
+                <p className="text-sm text-slate-500">{diagError}</p>
+              )
             ) : diag && diagOrgId === org.id ? (
               <div className="rounded-xl border border-brand-border overflow-hidden">
                 <div className="px-3.5 py-2.5 bg-brand-surface/40 border-b border-brand-border flex items-center gap-2.5">
@@ -393,6 +413,17 @@ export default function SettingsFlow() {
                       <AlertTriangle className="w-4 h-4 text-brand-warning shrink-0" />
                     )}
                     <span className="text-slate-600 min-w-0">Connector package {diag.checks?.package?.installed ? 'installed' : 'missing'}</span>
+                    {!diag.checks?.package?.installed && diag.installUrl && (
+                      <a
+                        href={diag.installUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-auto shrink-0 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-blue hover:bg-brand-blue-light/60 transition-colors"
+                      >
+                        Get install link
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
                     {diag.checks?.package?.reason && (
                       <span className="text-xs text-slate-400 ml-auto text-right break-words max-w-[60%]">{diag.checks.package.reason}</span>
                     )}
@@ -440,7 +471,7 @@ export default function SettingsFlow() {
                     <CheckCircle2 className="w-4 h-4 text-brand-pass shrink-0" />
                     <span className="text-slate-600 min-w-0">Org type detected</span>
                     <span className="text-xs text-slate-400 font-mono ml-auto text-right break-words max-w-[60%]">
-                      {diag.checks?.orgType?.detected || '—'}
+                      {diag.checks?.orgType?.detected || '–'}
                     </span>
                   </li>
                 </ul>
@@ -473,17 +504,16 @@ export default function SettingsFlow() {
             <p className="mt-1.5 text-sm text-slate-600">
               Org connections use the packaged <span className="font-semibold text-brand-dark">OrgForge Connector</span>{' '}
               External Client App (OAuth scopes Basic, Api, RefreshToken, OpenID; PKCE + refresh-token rotation
-              enforced). Install the connector package once per org — the dashboard surfaces an install prompt when a
+              enforced). Install the connector package once per org. The dashboard surfaces an install prompt when a
               connected org is missing it.
             </p>
           </div>
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Runtime</p>
             <p className="mt-1.5 text-sm text-slate-600">
-              OrgForge runs a single unified API with the Agent and Org Change capabilities mounted behind feature flags
-              (<span className="font-mono text-xs">FORGE_UNIFIED_API</span> /{' '}
-              <span className="font-mono text-xs">FORGE_MOUNT_AGENTFORGE</span>). Legacy apps keep running until the
-              Phase 5 decommission.
+              Forge runs a single unified API with the Agent and Org Change capabilities mounted behind the
+              <span className="font-mono text-xs">FORGE_UNIFIED_API</span> feature flag. The legacy apps were
+              decommissioned (2026-08-14) — this unified API is the only surface.
             </p>
           </div>
         </div>

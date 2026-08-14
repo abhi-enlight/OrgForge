@@ -15,7 +15,7 @@ const bodySchema = z.object({
 const forgeDb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:54321',
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy_key',
-  { auth: { persistSession: false, autoRefreshToken: false }, db: { schema: 'forge' } }
+  { auth: { persistSession: false, autoRefreshToken: false }, db: { schema: 'orgforge' } }
 );
 
 function hashPrompt(message) {

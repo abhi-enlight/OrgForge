@@ -211,13 +211,16 @@ export async function checkPackageInstalled(token, instanceUrl, packageVersionId
       if (versionRecords.length > 0) {
         subscriberPackageId = versionRecords[0].SubscriberPackageId;
       } else {
-        // Version id unknown to the tooling surface — try direct version match.
+        // Version id unknown to the tooling surface — try a direct version
+        // match. A HIT returns immediately; a miss falls through to the
+        // package + ECA checks below (the ECA fallback must apply on this
+        // path too — an unresolved 04t is exactly when ids may have drifted).
         const direct = await api.toolingQuery(
           token,
           instanceUrl,
           `SELECT Id FROM InstalledSubscriberPackage WHERE SubscriberPackageVersionId = '${packageVersionId}'`
         );
-        return Array.isArray(direct) && direct.length > 0;
+        if (Array.isArray(direct) && direct.length > 0) return true;
       }
     }
 
@@ -227,7 +230,34 @@ export async function checkPackageInstalled(token, instanceUrl, packageVersionId
       instanceUrl,
       `SELECT Id FROM InstalledSubscriberPackage WHERE SubscriberPackageId = '${subscriberPackageId}'`
     );
-    return Array.isArray(installed) && installed.length > 0;
+    if (Array.isArray(installed) && installed.length > 0) return true;
+
+    // 3. ECA fallback — closes the false "missing" verdicts when the
+    //    connector is installed as an UNMANAGED package (never listed in
+    //    InstalledSubscriberPackage) or the pinned 033/04t ids don't match the
+    //    version the admin installed. The External Client Application is the
+    //    signal that actually matters — it is the OAuth client Forge
+    //    authenticates through, and it exists in exactly the orgs where the
+    //    connector was set up. Best-effort: a query failure (unsupported
+    //    surface) keeps the package verdict instead of flipping it.
+    //
+    //    IMPORTANT: ExternalClientApplication is a STANDARD REST object, NOT
+    //    a Tooling object — a Tooling query returns 400 INVALID_TYPE "sObject
+    //    type 'ExternalClientApplication' is not supported" in every real
+    //    org, so the fallback must use the standard query surface (api.query)
+    //    or it can never match.
+    try {
+      const eca = await api.query(
+        token,
+        instanceUrl,
+        "SELECT Id FROM ExternalClientApplication WHERE DeveloperName = 'OrgForge_ECA' LIMIT 1"
+      );
+      if (Array.isArray(eca) && eca.length > 0) return true;
+    } catch (ecaErr) {
+      console.warn('[diagnostics] ECA fallback check unavailable (non-fatal):', ecaErr.message);
+    }
+
+    return false;
   } catch (err) {
     console.error('[diagnostics] Error checking package installation:', err.message);
     return false;
@@ -241,16 +271,24 @@ export async function checkPackageInstalled(token, instanceUrl, packageVersionId
  * (EinsteinCopilotSettings.enableEinsteinGptCopilot) and "Einstein"
  * (EinsteinGptSettings.enableEinsteinGptPlatform) — are Metadata-API-only
  * `.settings` types and CANNOT be queried via standard SOQL or the Tooling
- * API query endpoint. This uses the closest cheap runtime proxy: the
- * BotDefinition Tooling object Agentforce populates when the agent platform
- * is enabled.
+ * API query endpoint. This uses the closest cheap runtime proxy.
  *
- *   - query succeeds                     → enabled (Agentforce infra reachable)
- *   - throws "sObject type not supported" → not enabled → blocks the agents
- *     capability (provisioning would fail anyway — the Einstein Agent User
- *     profile only exists once these settings are on)
- *   - any other failure                  → unknown (null) — never fails the
- *     preflight; provisioning itself remains the stronger signal
+ * PRIMARY signal (authoritative): the `Einstein Agent User` profile. It is a
+ * standard REST object, queryable in every org, and per provisioning
+ * (getEinsteinAgentProfileId) it only exists once the Agentforce/Einstein
+ * settings are on — so its presence is the definitive "settings enabled"
+ * verdict.
+ *
+ * FALLBACK (only if the Profile query itself fails, e.g. restricted access):
+ * the BotDefinition Tooling object Agentforce populates when the agent
+ * platform is enabled. NOTE: "sObject type not supported" on BotDefinition
+ * is NOT treated as "disabled" — some fully-enabled orgs don't expose
+ * BotDefinition on the Tooling surface at all (observed in production), so
+ * that error alone cannot distinguish "settings off" from "probe
+ * unavailable". A genuine absence is only confirmed by the Profile query
+ * succeeding with zero rows; anything else degrades to unknown (null) and
+ * never fails the preflight — provisioning remains the stronger runtime
+ * signal.
  *
  * @param {string} token - Salesforce access token
  * @param {string} instanceUrl - https Salesforce instance URL
@@ -258,6 +296,31 @@ export async function checkPackageInstalled(token, instanceUrl, packageVersionId
  * @returns {Promise<{enabled: boolean|null, reason: string}>}
  */
 export async function checkAgentforceSettings(token, instanceUrl, api = sfApi) {
+  // Primary probe: the Einstein Agent User profile only exists once the
+  // Agentforce/Einstein settings are on (getEinsteinAgentProfileId depends on
+  // exactly this). Standard REST query — works in every org, unlike the
+  // BotDefinition Tooling proxy, which some fully-enabled orgs don't expose.
+  try {
+    const profiles = await api.query(
+      token,
+      instanceUrl,
+      "SELECT Id FROM Profile WHERE Name = 'Einstein Agent User' LIMIT 1"
+    );
+    if (profiles.length > 0) return { enabled: true, reason: '' };
+    return {
+      enabled: false,
+      reason: 'Agentforce / Einstein settings are not enabled in this org.',
+    };
+  } catch (err) {
+    // Profile query failed (e.g. insufficient access) — fall back to the
+    // BotDefinition Tooling proxy as a best-effort second signal. Unlike the
+    // original implementation, "sObject type not supported" here is treated
+    // as UNKNOWN (null), not disabled: we observed production orgs where
+    // Agentforce is enabled yet BotDefinition is not exposed on the Tooling
+    // surface, so that error cannot be trusted as a "settings off" verdict.
+    console.warn('[diagnostics] Profile probe failed, falling back to BotDefinition:', err.message);
+  }
+
   try {
     await api.toolingQuery(
       token,
@@ -267,16 +330,16 @@ export async function checkAgentforceSettings(token, instanceUrl, api = sfApi) {
     return { enabled: true, reason: '' };
   } catch (err) {
     // SfApiError's message is only "Tooling query failed (400)" — the real
-    // Salesforce error text (INVALID_TYPE / "sObject type ... not supported")
-    // lives in err.body. Match both so the disabled case is actually detected.
+    // Salesforce error text lives in err.body. Match both so a genuinely
+    // restricted surface is reported as unknown rather than a false disabled.
     const bodyText = JSON.stringify(err?.body ?? '');
     const message = String(err?.message || err || '') + ' ' + bodyText;
     const unsupported =
       /not supported|INVALID_TYPE|INVALID_OBJECT|No such.*object|Unknown.*sObject/i.test(message);
     if (unsupported) {
       return {
-        enabled: false,
-        reason: 'Agentforce / Einstein settings are not enabled in this org.',
+        enabled: null,
+        reason: 'Could not verify Agentforce settings in this org (probe not exposed).',
       };
     }
     return { enabled: null, reason: 'Could not verify Agentforce settings in this org.' };

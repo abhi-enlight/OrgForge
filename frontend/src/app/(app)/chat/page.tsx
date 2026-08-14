@@ -3,11 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ArrowRight, Eraser, Info, Paperclip, PlugZap, RotateCcw, SendHorizontal, Square, Sparkles, X } from 'lucide-react';
+import { ArrowRight, Eraser, History, Info, Paperclip, PlugZap, RotateCcw, SendHorizontal, Square, Sparkles, X } from 'lucide-react';
 import { useActiveOrg } from '@/lib/org-context';
 import { useOrgPackageHealth } from '@/lib/orgHealth';
 import { useOrgReadiness, agentsUnavailableHint } from '@/lib/orgReadiness';
-import { resetChatSession, streamChat, type ChatMessage } from '@/lib/chat-stream';
+import {
+  resetChatSession,
+  streamChat,
+  listChatSessions,
+  getChatSessionDetail,
+  type ChatMessage,
+  type SessionDetail,
+  type SessionSummary,
+} from '@/lib/chat-stream';
+import { supabase } from '@/lib/supabase';
 import { FORGE_UNIFIED_FRONTEND } from '@/lib/flags';
 import { classifyWithStub } from '@forge/ai/stubClassifier';
 import MessageBubble from '@/components/chat/MessageBubble';
@@ -18,7 +27,7 @@ import StarterCards from '@/components/chat/StarterCards';
 import PackageRequiredGate from '@/components/org/PackageRequiredGate';
 
 const GREETING =
-  "Hi, I'm OrgForge — your Salesforce copilot. Ask me to **build or update an agent**, or to make a **governed org change** (validation rules, permission sets, fields).";
+  "Hi, I'm Forge, your Salesforce copilot. Ask me to **build or update an agent**, or to make a **governed org change** (validation rules, permission sets, fields).";
 
 /** crypto.randomUUID is unavailable in non-secure contexts (http on LAN IP) — same fallback everywhere (review finding). */
 function makeId(): string {
@@ -30,6 +39,19 @@ function makeId(): string {
 }
 
 const makeSessionId = makeId;
+
+/** Compact relative timestamp for the History list ("2h ago"). */
+function timeAgo(iso: string | null): string {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  if (ms < 60_000) return 'just now';
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 // Documents + images — mirrors the server allowlist
 // (api/src/lib/fileAttachments.js): pdf/docx/txt/md inject extracted text;
@@ -49,8 +71,10 @@ export default function ChatPage() {
   const { org } = useActiveOrg();
   // Package-install health for the active org — drives the chat access gate
   // below (the Copilot is locked until the connector package is installed).
-  // Auto-checks on org change (Redis-cached 10 min), re-checks on demand.
-  const pkg = useOrgPackageHealth(org?.id ?? null);
+  // Shared via the layout-level OrgPackageHealthProvider: checked once per
+  // org per page session (Redis-cached 10 min server-side), re-checks on
+  // demand — opening the chat page never re-runs the org check itself.
+  const pkg = useOrgPackageHealth();
   const searchParams = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -63,6 +87,18 @@ export default function ChatPage() {
   // subtle — the transcript stays), auto-dismissed.
   const [resetNote, setResetNote] = useState<string | null>(null);
   const resetNoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // History picker (resume-from-closed-tab): the session list panel, its
+  // load/error state, and a brief "Conversation resumed." confirmation.
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [resumeNote, setResumeNote] = useState<string | null>(null);
+  const resumeNoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The currently-active session id (state mirror of sessionIdRef so the
+  // History list can mark the current conversation without reading a ref in
+  // render). Kept in sync on init, on Clear/Stop&reset rotation, and on resume.
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   // The attach ERROR is a transient notification (auto-dismissed like the
   // reset note) — the attachment CHIP, by contrast, is persistent state the
   // user manages with its X and must never silently vanish.
@@ -77,24 +113,43 @@ export default function ChatPage() {
     [input]
   );
 
-  // Stable per-org session key (S-2 chat_sessions): persisted in localStorage
-  // so a refresh (or an org switch) resumes the same session spine on the
-  // server. Effect-scoped (react-hooks/refs forbids render-phase access).
+  // Stable session key (S-2 chat_sessions) — hardened for isolation
+  // (context-memory pass): stored per TAB in sessionStorage, so two open
+  // chats never share one server conversation, and scoped by user + org so a
+  // shared browser can't hand one account's session id to another. A refresh
+  // in the same tab still resumes the same session spine; closing the tab
+  // starts a fresh session (the old one's durable memory stays inert in
+  // chat_sessions — unreachable without its id). Effect-scoped
+  // (react-hooks/refs forbids render-phase access).
   const sessionIdRef = useRef<string | null>(null);
   const sessionOrgRef = useRef<string | null>(null);
+  // The exact storage key in use, so Clear/Stop&reset rotates under the SAME
+  // key the session effect initialized (set once getUser resolves).
+  const sessionKeyRef = useRef<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   useEffect(() => {
-    if (!org || sessionOrgRef.current === org.id) return;
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) setUserId(data.session?.user?.id ?? null);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!org || !userId || sessionOrgRef.current === org.id) return;
     sessionOrgRef.current = org.id;
-    const storageKey = `forge.chat.session.${org.id}`;
+    const storageKey = `forge.chat.session.${userId}.${org.id}`;
+    sessionKeyRef.current = storageKey;
     try {
-      const stored = window.localStorage.getItem(storageKey);
+      const stored = window.sessionStorage.getItem(storageKey);
       sessionIdRef.current = stored && stored.length <= 200 ? stored : makeSessionId();
-      window.localStorage.setItem(storageKey, sessionIdRef.current);
+      window.sessionStorage.setItem(storageKey, sessionIdRef.current);
     } catch {
       // Storage unavailable — fall back to an in-memory session id.
       sessionIdRef.current = sessionIdRef.current ?? makeSessionId();
     }
-  }, [org]);
+    setActiveSessionId(sessionIdRef.current);
+  }, [org, userId]);
   const abortRef = useRef<AbortController | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -121,21 +176,24 @@ export default function ChatPage() {
 
   // Deep links (?prompt=) — from the dashboard tiles, templates, and the
   // agents/changes pages — prefill the composer so the user can review and
-  // send. Re-runs when the param changes (client-side navigation may re-render
-  // the same mounted page instead of remounting it), but only applies a given
-  // prompt once so editing the textarea isn’t clobbered by a re-render.
-  const appliedPromptRef = useRef<string | null>(null);
+  // send. Keyed on the prompt VALUE (not the searchParams object identity,
+  // which can change across a client-side navigation even when the URL is
+  // stable): React StrictMode's dev double-invoke runs effect → cleanup →
+  // effect, and a once-only ref guard would let the cleanup cancel the pending
+  // fill while the re-run skips it — dropping the prompt entirely (the
+  // templates "Use in Copilot" button prefills nothing on client-side nav).
+  // Keying on the value makes the re-run simply re-schedule. User edits never
+  // change the URL param, so typing in the textarea can't be clobbered.
+  const promptParam = searchParams.get('prompt');
   useEffect(() => {
-    const promptParam = searchParams.get('prompt');
-    if (!promptParam || appliedPromptRef.current === promptParam) return;
-    appliedPromptRef.current = promptParam;
+    if (!promptParam) return;
     // Deferred so state settles after mount (react-hooks/set-state-in-effect).
     const timer = setTimeout(() => {
       setInput(promptParam);
       textareaRef.current?.focus();
     }, 0);
     return () => clearTimeout(timer);
-  }, [searchParams]);
+  }, [promptParam]);
 
   // Auto-scroll to the bottom unless the user scrolled up (300px threshold).
   const handleScroll = useCallback(() => {
@@ -216,7 +274,7 @@ export default function ChatPage() {
           appendMessage({
             id: makeId(),
             role: 'assistant',
-            content: `Agent building isn't available in this org — ${agentsUnavailableHint(readiness.diag)}. I stopped this request before it ran.`,
+            content: `Agent building isn't available in this org: ${agentsUnavailableHint(readiness.diag)}. I stopped this request before it ran.`,
             type: 'gate_block',
             summary: "Agent building isn't available",
           });
@@ -232,7 +290,7 @@ export default function ChatPage() {
           appendMessage({
             id: makeId(),
             role: 'assistant',
-            content: `Agent building isn't available in this org — ${agentsUnavailableHint(readiness.diag)}. Skipping the agent half and applying the org change.`,
+            content: `Agent building isn't available in this org: ${agentsUnavailableHint(readiness.diag)}. Skipping the agent half and applying the org change.`,
             type: 'deploy_warning',
             summary: 'Agent half skipped',
           });
@@ -317,7 +375,7 @@ export default function ChatPage() {
         appendMessage({
           id: makeId(),
           role: 'assistant',
-          content: err instanceof Error ? err.message : 'Something went wrong. Please try again.',
+          content: err instanceof Error ? err.message : "Your request didn't go through. Please try again.",
           type: 'error',
         });
       } finally {
@@ -346,10 +404,15 @@ export default function ChatPage() {
     if (oldSessionId) {
       resetChatSession(oldSessionId, org.id).catch(() => {});
     }
+    sessionIdRef.current = makeSessionId();
+    setActiveSessionId(sessionIdRef.current);
+    // Persist the rotation under the same key the session effect chose; if
+    // the user isn't resolved yet (key unknown), the in-memory ref alone is
+    // enough — the effect will pick a keyed id once it runs.
     try {
-      const storageKey = `forge.chat.session.${org.id}`;
-      sessionIdRef.current = makeSessionId();
-      window.localStorage.setItem(storageKey, sessionIdRef.current);
+      if (sessionKeyRef.current) {
+        window.sessionStorage.setItem(sessionKeyRef.current, sessionIdRef.current);
+      }
     } catch {
       // Storage unavailable — the in-memory ref was still rotated above.
     }
@@ -378,9 +441,93 @@ export default function ChatPage() {
     // Brief inline confirmation — the reset's visible effect is subtle (the
     // transcript is kept), so make the server-side wipe legible, then
     // auto-dismiss.
-    setResetNote('Conversation reset — next message starts fresh.');
+    setResetNote('Conversation reset. Next message starts fresh.');
     if (resetNoteTimerRef.current) clearTimeout(resetNoteTimerRef.current);
     resetNoteTimerRef.current = setTimeout(() => setResetNote(null), 4000);
+  };
+
+  // ── History picker (resume from closed tabs) ───────────────────────────
+  const refreshSessions = useCallback(async () => {
+    if (!org) return;
+    setSessionsLoading(true);
+    setSessionsError(null);
+    try {
+      setSessions(await listChatSessions(org.id));
+    } catch (err) {
+      setSessionsError(
+        err instanceof Error && err.message ? err.message : 'Could not load past conversations.'
+      );
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, [org]);
+
+  // Toggle the panel. The list is org-scoped and tiny, so every open fetches
+  // fresh — no cache invalidation to get wrong when the user switches orgs.
+  const toggleSessions = () => {
+    if (sessionsOpen) {
+      setSessionsOpen(false);
+      return;
+    }
+    setSessionsOpen(true);
+    refreshSessions();
+  };
+
+  // Rebuilds the visible conversation from a session's spine: a marker for
+  // the flash-compressed head (when present) + the verbatim transcript tail.
+  const buildMessagesFromSpine = (detail: SessionDetail): ChatMessage[] => {
+    const out: ChatMessage[] = [];
+    if (detail.contextSummary) {
+      out.push({
+        id: makeId(),
+        role: 'assistant',
+        content: 'Earlier in this conversation has been summarized and continues from memory.',
+        type: 'message',
+        summary: 'Resumed from memory',
+      });
+    }
+    for (const turn of detail.transcript) {
+      const text = turn?.text?.trim();
+      if (!text) continue;
+      out.push({
+        id: makeId(),
+        role: turn.role === 'user' ? 'user' : 'assistant',
+        content: text,
+        type: 'message',
+      });
+    }
+    return out;
+  };
+
+  // Resumes a past session: adopts its session id (sessionStorage persists it
+  // so a refresh keeps the same spine), rebuilds the transcript from the
+  // durable memory, and clears the pin. The NEXT send continues the same
+  // session — the engine resumes from Redis or the chat_sessions spine.
+  const resumeSession = async (sessionId: string) => {
+    if (!org || isBuilding) return;
+    try {
+      const detail = await getChatSessionDetail(sessionId, org.id);
+      const adoptedId = detail.sessionId || sessionId;
+      sessionIdRef.current = adoptedId;
+      setActiveSessionId(adoptedId);
+      try {
+        if (sessionKeyRef.current) {
+          window.sessionStorage.setItem(sessionKeyRef.current, adoptedId);
+        }
+      } catch {
+        // Storage unavailable — the in-memory ref is enough for this tab.
+      }
+      setMessages(buildMessagesFromSpine(detail));
+      setPin(null);
+      setSessionsOpen(false);
+      setResumeNote('Conversation resumed.');
+      if (resumeNoteTimerRef.current) clearTimeout(resumeNoteTimerRef.current);
+      resumeNoteTimerRef.current = setTimeout(() => setResumeNote(null), 4000);
+    } catch (err) {
+      setSessionsError(
+        err instanceof Error && err.message ? err.message : 'Could not resume this conversation.'
+      );
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -389,6 +536,21 @@ export default function ChatPage() {
       startChat();
     }
   };
+
+  // Auto-grow the composer with content: sync the textarea height to its
+  // scrollHeight, clamped at max-h-40 (160px — the textarea's CSS cap). A
+  // long prompt expands as it wraps instead of scrolling inside a one-line
+  // box; clearing the input (send / reset) shrinks it back via the same path.
+  const resizeComposer = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, []);
+
+  useEffect(() => {
+    resizeComposer();
+  }, [input, resizeComposer]);
 
   const pickStarter = (prompt: string) => {
     setInput(prompt);
@@ -498,18 +660,82 @@ export default function ChatPage() {
         <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-brand-border bg-white/60">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
             <Sparkles className="w-3.5 h-3.5 text-brand-blue" />
-            OrgForge Copilot
+            Forge Copilot
             <span className="hidden sm:inline text-slate-300">·</span>
             <span className="hidden sm:inline text-slate-400">{org.name}</span>
           </div>
-          <button
-            type="button"
-            onClick={clearChat}
-            disabled={isBuilding}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-red-500 disabled:opacity-50 transition-colors cursor-pointer"
-          >
-            <Eraser className="w-3.5 h-3.5" /> Clear
-          </button>
+          <div className="relative flex items-center gap-2">
+            {/* History picker — resume conversations from closed tabs. */}
+            <button
+              type="button"
+              onClick={toggleSessions}
+              disabled={isBuilding}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-brand-blue hover:bg-slate-100/80 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              <History className="w-3.5 h-3.5" /> History
+            </button>
+
+            <span className="h-3.5 w-px bg-slate-200" aria-hidden="true" />
+
+            <button
+              type="button"
+              onClick={clearChat}
+              disabled={isBuilding}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              <Eraser className="w-3.5 h-3.5" /> Clear
+            </button>
+            {sessionsOpen && (
+              <div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white border border-brand-border rounded-xl shadow-lg overflow-hidden z-20">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-brand-border bg-white/60">
+                  <span className="text-xs font-semibold text-slate-500">Past conversations</span>
+                  <button
+                    type="button"
+                    onClick={() => setSessionsOpen(false)}
+                    className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    aria-label="Close history"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="max-h-72 overflow-y-auto p-1.5">
+                  {sessionsLoading ? (
+                    <p className="px-3 py-4 text-xs text-slate-400">Loading…</p>
+                  ) : sessionsError ? (
+                    <p className="px-3 py-4 text-xs text-red-500">{sessionsError}</p>
+                  ) : sessions && sessions.length > 0 ? (
+                    sessions.map((s) => (
+                      <button
+                        key={s.sessionId}
+                        type="button"
+                        onClick={() => resumeSession(s.sessionId)}
+                        disabled={isBuilding}
+                        className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-brand-surface disabled:opacity-50 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-medium text-slate-700 truncate">
+                            {s.lastSummary || 'Conversation'}
+                          </span>
+                          <span className="shrink-0 text-[10px] text-slate-400">
+                            {timeAgo(s.updatedAt)}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-slate-400">
+                          {s.sessionId === activeSessionId ? 'Current · ' : ''}
+                          session {s.sessionId.slice(0, 8)}
+                          {s.hasSummary ? ' · summarized' : ''}
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-3 py-4 text-xs text-slate-400">
+                      No past conversations in this org yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Messages */}
@@ -523,9 +749,9 @@ export default function ChatPage() {
               <span className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-brand-blue-light mb-4 border border-brand-blue/10">
                 <Sparkles className="w-6 h-6 text-brand-blue" />
               </span>
-              <h2 className="text-xl font-bold text-brand-dark mb-1">Ask OrgForge anything</h2>
+              <h2 className="text-xl font-bold text-brand-dark mb-1">What should we build or change?</h2>
               <p className="text-xs font-medium text-slate-500 max-w-md mb-7">
-                Build agents or make governed org changes in natural language — pick a starter below or type your own.
+                Build agents or make governed org changes in natural language. Pick a starter below or type your own.
               </p>
               <StarterCards onPick={pickStarter} />
             </div>
@@ -565,6 +791,14 @@ export default function ChatPage() {
                   </span>
                 </div>
               )}
+              {resumeNote && (
+                <div className="flex justify-center" role="status">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-brand-border px-3 py-1 text-xs text-slate-500 shadow-sm animate-fade-in">
+                    <History className="w-3 h-3 text-brand-blue" />
+                    {resumeNote}
+                  </span>
+                </div>
+              )}
               {isBuilding && (
                 <div className="flex justify-start">
                   <div className="bg-white border border-brand-border rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm">
@@ -591,7 +825,7 @@ export default function ChatPage() {
               onChange={setPin}
               disabled={isBuilding}
               disabledOptions={agentsUnavailable ? ['agent', 'both'] : []}
-              disabledOptionsReason="Agent building isn't available in this org — enable Agentforce Agent and Einstein in Setup → Agentforce"
+              disabledOptionsReason="Agent building isn't available in this org. Enable Agentforce Agent and Einstein in Setup → Agentforce"
               canary={FORGE_UNIFIED_FRONTEND}
               stubVerdict={stubVerdict}
             />
@@ -626,7 +860,7 @@ export default function ChatPage() {
             >
               <Info className="w-3.5 h-3.5 shrink-0 mt-px text-amber-600" />
               <span>
-                Agent building is unavailable in this org — enable{' '}
+                Agent building is unavailable in this org. Enable{' '}
                 <strong className="font-semibold">Agentforce Agent</strong> and{' '}
                 <strong className="font-semibold">Einstein</strong> in{' '}
                 <span className="font-mono text-[11px]">Setup → Agentforce</span>.{' '}
@@ -687,7 +921,7 @@ export default function ChatPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={1}
-              placeholder="Ask OrgForge to build an agent or make an org change…"
+              placeholder="Ask Forge to build an agent or make an org change…"
               className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-surface/60 px-4 py-3 text-sm text-brand-dark placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue transition-shadow max-h-40"
               style={{ minHeight: 44 }}
             />
@@ -696,8 +930,8 @@ export default function ChatPage() {
                 <button
                   type="button"
                   onClick={stopAndResetChat}
-                  aria-label="Stop the run and reset this conversation's server state (lock + context) — the transcript stays; the next message starts fresh"
-                  title="Stop & reset — abort the run and wipe this conversation's server lock + context; the transcript stays and the next message starts fresh"
+                  aria-label="Stop the run and reset this conversation's server state (lock + context). The transcript stays; the next message starts fresh"
+                  title="Stop & reset. Abort the run and wipe this conversation's server lock + context; the transcript stays and the next message starts fresh"
                   className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-brand-refused/40 text-brand-refused text-sm font-semibold px-3 h-11 hover:border-red-500 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />

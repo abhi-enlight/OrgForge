@@ -2,9 +2,13 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import sfClient from './salesforceClient.js'
 import { generateMockData } from './mockDataGenerator.js'
 import { testAgent } from './agentTester.js'
-import { saveLog, fetchActiveLessons } from './logService.js'
-import { analyzeSingleFailure } from './judgeService.js'
 import 'dotenv/config';
+
+// Inert fallbacks for retired legacy services (superseded by @forge/ai)
+const saveLog = async () => {};
+const fetchActiveLessons = async () => [];
+const analyzeSingleFailure = async () => null;
+
 
 // ─────────────────────────────────────────────────────────────
 //  SECURITY: sanitizeForLog()
@@ -759,6 +763,144 @@ const TOOL_DECLARATIONS = [{
 }];
 
 // ─────────────────────────────────────────────────────────────
+//  DURABLE CONTEXT MEMORY BOUNDS (context-memory pass)
+//  Bounds keep the persisted conversation small enough to write to
+//  chat_sessions / Redis on every turn and cheap to re-seed into the
+//  model's context window (token savings). The LIVE Gemini history is
+//  NOT bounded by these — only the durable copy.
+// ─────────────────────────────────────────────────────────────
+const MAX_TRANSCRIPT_TURNS = 40;      // newest verbatim turns kept
+const MAX_TRANSCRIPT_CHARS = 40_000;  // hard cap on the whole transcript
+const MAX_TURN_CHARS = { user: 2000, model: 4000 };
+// Synthetic turns injected by compression / BUG-B recovery — never persisted
+// as verbatim turns (they'd be re-injected as history on resume).
+const SYNTHETIC_PREFIXES = ['[CONTEXT SUMMARY', '[SESSION RECOVERY CONTEXT'];
+const SYNTHETIC_ACKS = [
+  'Understood. I have the full context of what has been built, confirmed, and decided so far. Ready to continue.',
+  'Understood. I have the recovered context. I will not re-ask questions that have already been answered.',
+];
+// A summary shorter than this is treated as empty (dropped from resume and
+// from the compressed history) — a degenerate summary is worse than none.
+const MIN_SUMMARY_LEN = 50;
+// Newest verbatim turns kept AFTER a flash compression. The compression pass
+// distills everything older than this tail into the summary, but the most
+// recent exchanges stay word-for-word — the immediate thread is the part of
+// the conversation most likely to carry in-flight, unrepeatable detail.
+const COMPRESSION_KEEP_TAIL = 6;
+
+// ─────────────────────────────────────────────────────────────
+//  PURE CONTEXT-MEMORY HELPERS (shared by the live transcript sync,
+//  the flash compression pass, and resume-history building). Kept as
+//  module-level functions so the memory unit tests can exercise the
+//  exact logic both code paths rely on.
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Bounded, text-only turns extracted from live Gemini history. Skips
+ * synthetic compression/recovery turns and tool-only parts (functionCall /
+ * functionResponse carry no prose). Caps the newest MAX_TRANSCRIPT_TURNS and
+ * MAX_TRANSCRIPT_CHARS. The LIVE history is NOT bounded by these — only the
+ * durable copy and the compression input are.
+ *
+ * @param {Array} history - Gemini history array (turn.role / turn.parts)
+ * @returns {Array<{role: 'user'|'model', text: string}>}
+ */
+function extractTextTurns(history) {
+  if (!Array.isArray(history)) return [];
+  const turns = [];
+  for (const turn of history) {
+    const role = turn.role === 'user' ? 'user' : turn.role === 'model' ? 'model' : null;
+    if (!role) continue;
+    const text = (turn.parts || [])
+      .filter(p => p.text)
+      .map(p => p.text)
+      .join(' ')
+      .trim();
+    if (!text) continue;
+    if (SYNTHETIC_PREFIXES.some(p => text.startsWith(p))) continue;
+    if (SYNTHETIC_ACKS.includes(text)) continue;
+    turns.push({ role, text: text.slice(0, MAX_TURN_CHARS[role] || MAX_TURN_CHARS.model) });
+  }
+  // Drop the oldest turns until the per-turn and total caps hold.
+  while (turns.length > MAX_TRANSCRIPT_TURNS) turns.shift();
+  let total = turns.reduce((n, t) => n + t.text.length, 0);
+  while (total > MAX_TRANSCRIPT_CHARS && turns.length > 1) {
+    turns.shift();
+    total = turns.reduce((n, t) => n + t.text.length, 0);
+  }
+  return turns;
+}
+
+/**
+ * Normalizes a list of {role, text} turns into a Gemini alternation-safe
+ * history fragment. Consecutive same-role turns are MERGED (joined with a
+ * newline, then re-capped) — never dropped. A dropped turn is a context leak:
+ * the content silently vanishes from what the model sees on resume. When
+ * `previous` (the last turn already in the caller's history) has the same role
+ * as the fragment's first turn, the first turn merges INTO `previous` (its
+ * content is preserved — e.g. a model turn right after the synthetic ack). A
+ * leading 'model' turn with NO preceding turn is invalid alternation and is
+ * removed.
+ *
+ * @param {Array<{role: string, text: string}>} turns
+ * @param {{role: string, parts: Array<{text: string}>}|null} [previous]
+ * @returns {Array<{role: string, parts: Array<{text: string}>}>}
+ */
+function normalizeTurnsIntoHistory(turns, previous) {
+  const out = [];
+  let last = previous || null;
+  for (const t of (turns || [])) {
+    const role = t?.role === 'user' ? 'user' : 'model';
+    const text = String(t?.text ?? '').trim();
+    if (!text) continue;
+    const capped = text.slice(0, MAX_TURN_CHARS[role] || MAX_TURN_CHARS.model);
+    if (last && last.role === role) {
+      // Merge — preserve the content instead of dropping the turn.
+      const merged = `${last.parts[0].text}\n${capped}`.slice(0, MAX_TURN_CHARS[role] || MAX_TURN_CHARS.model);
+      last.parts = [{ text: merged }];
+      continue;
+    }
+    const turn = { role, parts: [{ text: capped }] };
+    out.push(turn);
+    last = turn;
+  }
+  // A leading model turn with no user turn before it is invalid alternation.
+  while (out.length > 0 && out[0].role === 'model') out.shift();
+  return out;
+}
+
+/**
+ * Exact-name hints from the structured build state (ctx / manager fields), so
+ * the flash summarizer cannot lose concrete artifact names (topics, actions,
+ * Apex classes, custom objects, guardrails, escalation, knowledge).
+ * Returns an empty string when there is no structured state worth pinning.
+ */
+function buildBuildStateHints(m) {
+  const lines = [];
+  if (m.agentName) lines.push(`- Agent being built/modified: ${m.agentName}`);
+  if (m.ctx?.topics?.length > 0) {
+    lines.push('- Topics/subagents created — preserve EXACT developerName and masterLabel:');
+    for (const t of m.ctx.topics) lines.push(`  * ${t.masterLabel || ''} (${t.developerName || t.name || ''})`);
+  }
+  if (m.ctx?.actions?.length > 0) {
+    lines.push('- Actions created — preserve EXACT developerName, masterLabel, and type:');
+    for (const a of m.ctx.actions) lines.push(`  * ${a.masterLabel || ''} (${a.developerName || ''}) [${a.type || ''}]`);
+  }
+  if (m.ctx?.customObjects?.length > 0) {
+    lines.push('- Custom objects queued/created:');
+    for (const c of m.ctx.customObjects) lines.push(`  * ${c.objectLabel || c.developerName || c.name || ''}`);
+  }
+  if (m.ctx?.guardrails?.length > 0) lines.push(`- Guardrails: ${m.ctx.guardrails.join(' | ')}`);
+  if (m.ctx?.escalation) lines.push(`- Human escalation: ${JSON.stringify(m.ctx.escalation)}`);
+  if (m.ctx?.knowledge?.enabled) lines.push(`- Knowledge/RAG: enabled${m.ctx.knowledge.ragId ? ` (${m.ctx.knowledge.ragId})` : ''}`);
+  if (m.ctx?.referencedObjects?.size > 0) lines.push(`- Referenced SObjects: ${[...m.ctx.referencedObjects].join(', ')}`);
+  if (m.deployHistory?.length > 0) lines.push(`- Deployment attempts so far: ${m.deployHistory.length}`);
+  return lines.length > 0
+    ? `\n\nIMPORTANT — The following confirmed session state MUST be preserved verbatim in your summary:\n${lines.join('\n')}`
+    : '';
+}
+
+// ─────────────────────────────────────────────────────────────
 //  CONVERSATION MANAGER CLASS
 // ─────────────────────────────────────────────────────────────
 class ConversationManager {
@@ -779,6 +921,11 @@ class ConversationManager {
     // BUG-4: Track creation time for the hard-cap eviction logic in index.js.
     this.createdAt = Date.now();
     this.compressionCount = 0; // tracks how many times history has been compressed this session
+    // Durable conversation memory (context-memory pass): bounded verbatim turns
+    // + the flash summary of older turns. Survives restarts via the Redis
+    // snapshot (agentEngine SERIALIZABLE_FIELDS) and the chat_sessions columns.
+    this.transcriptTurns = [];
+    this.contextSummary = null;
   }
 
   abort() {
@@ -838,8 +985,20 @@ class ConversationManager {
       systemInstruction: fullSystemInstruction,
       tools: TOOL_DECLARATIONS
     });
-    
-    this.chat = this.model.startChat();
+
+    // Resume durable context on a cold start: either the Redis-hydrated
+    // snapshot (agentEngine SERIALIZABLE_FIELDS) or the caller-supplied resume
+    // payload (chat_sessions). Rebuilds history = summary pair + recent
+    // verbatim turns so the agent remembers the prior conversation without
+    // paying full-context tokens for all of it.
+    const resumeSnapshot =
+      (this.transcriptTurns && this.transcriptTurns.length > 0) || this.contextSummary
+        ? { turns: this.transcriptTurns, summary: this.contextSummary }
+        : null;
+    const resumeHistory = resumeSnapshot ? this._buildResumeHistory(resumeSnapshot) : null;
+    this.chat = resumeHistory && resumeHistory.length > 0
+      ? this.model.startChat({ history: resumeHistory })
+      : this.model.startChat();
     this.ctx = sfClient.createContext();
     this.state = 'clarifying';
     this.lastUpdated = Date.now();
@@ -896,17 +1055,92 @@ class ConversationManager {
   }
 
   // ─────────────────────────────────────────────────────────────
+  //  DURABLE CONTEXT MEMORY (context-memory pass)
+  //  _syncTranscript() — extracts the bounded, text-only transcript from the
+  //  live Gemini history. Called after every turn so the durable copy (Redis
+  //  snapshot + chat_sessions) mirrors the live conversation.
+  //  getContextSnapshot() — hands the durable snapshot to the route for
+  //  persistence.
+  //  applyResumeContext() — idempotent setter used by the engine on a cold
+  //  start with a caller-supplied durable snapshot (chat_sessions).
+  //  _buildResumeHistory() — rebuilds a Gemini-compatible history (summary
+  //  pair + recent verbatim turns) from the durable snapshot when this session
+  //  is re-hydrated on a cold start (init).
+  // ─────────────────────────────────────────────────────────────
+  _syncTranscript() {
+    if (!this.chat || !Array.isArray(this.chat._history)) return;
+    this.transcriptTurns = extractTextTurns(this.chat._history);
+  }
+
+  /**
+   * Idempotent: applies a durable snapshot only when none is already loaded.
+   * Returns true when a non-empty snapshot was actually consumed.
+   */
+  applyResumeContext({ turns, summary } = {}) {
+    if (this.transcriptTurns && this.transcriptTurns.length > 0) return false;
+    if (this.contextSummary) return false;
+    let applied = false;
+    if (Array.isArray(turns) && turns.length > 0) {
+      this.transcriptTurns = turns;
+      applied = true;
+    }
+    if (summary) {
+      this.contextSummary = summary;
+      applied = true;
+    }
+    return applied;
+  }
+
+  /** Returns the durable memory snapshot for the route to persist. */
+  getContextSnapshot() {
+    return { turns: this.transcriptTurns || [], summary: this.contextSummary || null };
+  }
+
+  /** Builds a Gemini history array from the durable snapshot (summary + tail). */
+  _buildResumeHistory({ summary, turns } = {}) {
+    const history = [];
+    let previous = null;
+    if (summary && summary.trim().length >= MIN_SUMMARY_LEN) {
+      history.push({
+        role: 'user',
+        parts: [{ text: `[CONTEXT SUMMARY — compact record of our conversation so far. Use it to maintain full context.]\n\n${summary}` }]
+      });
+      previous = { role: 'model', parts: [{ text: SYNTHETIC_ACKS[0] }] };
+      history.push(previous);
+    }
+    // Append the verbatim tail via the shared normalizer: roles strictly
+    // alternate (Gemini rejects consecutive same-role turns) and consecutive
+    // same-role turns are MERGED — never dropped, so no content leaks away
+    // (a model turn right after the ack merges INTO the ack).
+    return history.concat(normalizeTurnsIntoHistory(turns, previous));
+  }
+
+  // ─────────────────────────────────────────────────────────────
   //  _compressHistoryIfNeeded() — Option B: Summarize on Threshold
   //  Fires only when history exceeds 28 turns (well past a normal
   //  session). Uses gemini-3.6-flash (cheap, fast) to produce a
-  //  compact summary, then restarts the chat with that summary as
-  //  a single 2-turn synthetic history. All instance state
-  //  (requirementsConfirmed, ctx, agentName, etc.) is preserved.
-  //  Fully non-fatal: if anything fails, the original chat is kept.
+  //  compact summary, then restarts the chat with: summary pair +
+  //  the newest COMPRESSION_KEEP_TAIL turns kept VERBATIM. All
+  //  instance state (requirementsConfirmed, ctx, agentName, etc.) is
+  //  preserved. Fully non-fatal: if anything fails, the original
+  //  chat is kept.
+  //
+  //  Guards (nothing crucial is ever summarized away):
+  //   - mid-deploy: the retry loop's exact component names and error
+  //     text are the most critical in-flight state (state === 'deploying')
+  //   - between requirements confirmation and the first build tool call:
+  //     the user's decisions live ONLY in the transcript (no structured
+  //     ctx exists yet to re-pin them)
+  //   - the newest COMPRESSION_KEEP_TAIL turns are never distilled —
+  //     they stay verbatim in the synthetic history AND the durable
+  //     transcript, so a cold-start resume gets summary + recent tail
+  //   - structured build state (topics/actions/guardrails/escalation/
+  //     custom objects) is injected as EXACT-NAME hints so the Flash
+  //     summarizer cannot drop artifact names
   // ─────────────────────────────────────────────────────────────
   async _compressHistoryIfNeeded() {
     try {
-      const history = await this.chat.getHistory();
+      const history = Array.isArray(this.chat?._history) ? this.chat._history : [];
       const COMPRESSION_THRESHOLD = 28;
       const COMPRESSION_COOLDOWN  = 10; // only re-compress every 10 turns after first compression
 
@@ -917,51 +1151,59 @@ class ConversationManager {
       if (this.compressionCount > 0 &&
           history.length < COMPRESSION_THRESHOLD + (this.compressionCount * COMPRESSION_COOLDOWN)) return;
 
-      // BUG-8: Never compress while a build is in progress.
-      // If topics or actions have already been created, the conversation contains
-      // critical concrete details (exact action names, Apex class names, object API
-      // names) that a summarizer may lose. Losing them causes YAML name mismatches
-      // and silent deployment failures on the very next turn.
-      if (this.ctx && ((this.ctx.topics && this.ctx.topics.length > 0) || (this.ctx.actions && this.ctx.actions.length > 0))) {
-        console.log('[TOKEN_SAVER] Skipping compression — build state is active (topics/actions present). Protecting context integrity.');
+      // BUG-8: Never compress mid-deploy. The deployment retry loop's exact
+      // component names and error text are the most critical in-flight state;
+      // a distillation here can break the very next fix-and-redeploy cycle.
+      if (this.state === 'deploying') {
+        console.log('[TOKEN_SAVER] Skipping compression — deployment in flight. Protecting in-flight deploy state.');
         return;
       }
 
-      // BUG-A FIX: Never compress when requirements have already been confirmed.
-      // Between Phase 1 (user answering clarifying questions) and Phase 3 (build tools
-      // being called), NO topics or actions exist yet — but the conversation contains
-      // critical user decisions (which object to use, escalation strategy, guardrails).
-      // The Flash summarizer does not know which details are required and may lose
-      // exact values like flow API names, custom object field names, and conditions.
-      // Protecting requirementsConfirmed ensures those answers survive until build starts.
-      if (this.requirementsConfirmed) {
+      // BUG-A FIX: Never compress in the window between requirements being
+      // confirmed and the first build tool call. In that window NO topics or
+      // actions exist yet — the user's decisions (object choice, escalation
+      // strategy, guardrails, exact flow API names) live ONLY in the transcript
+      // and the Flash summarizer may lose exact values. Once the build has
+      // actually started, the same facts exist in the structured ctx, which we
+      // inject as exact-name hints (buildBuildStateHints) — so compression is
+      // safe (and badly needed) for long build/deploy conversations.
+      const buildStarted = !!(this.ctx && ((this.ctx.topics && this.ctx.topics.length > 0) || (this.ctx.actions && this.ctx.actions.length > 0)));
+      if (this.requirementsConfirmed && !buildStarted) {
         console.log('[TOKEN_SAVER] Skipping compression — requirements confirmed but build not yet started. Protecting user decisions.');
         return;
       }
 
-      console.log(`[TOKEN_SAVER] History at ${history.length} turns — running compression #${this.compressionCount + 1}...`);
+      // Bounded real turns (synthetic markers + tool-only parts stripped), then
+      // split: everything older than the tail is summarized, the tail stays
+      // verbatim. Nothing worth distilling → keep the original chat.
+      const realTurns = extractTextTurns(history);
+      const olderTurns = realTurns.slice(0, -COMPRESSION_KEEP_TAIL);
+      const keptTurns = realTurns.slice(-COMPRESSION_KEEP_TAIL);
+      if (olderTurns.length === 0) return;
 
-      // Build a text-only transcript (skip binary/tool parts — just prose)
-      const transcript = history.map(turn => {
-        const role = turn.role === 'user' ? 'USER' : 'ASSISTANT';
-        const text = (turn.parts || [])
-          .filter(p => p.text)
-          .map(p => p.text)
-          .join(' ')
-          .trim();
-        return text ? `${role}: ${text}` : null;
-      }).filter(Boolean).join('\n\n');
+      console.log(`[TOKEN_SAVER] History at ${history.length} turns — running compression #${this.compressionCount + 1} (${olderTurns.length} older turns summarized, ${keptTurns.length} kept verbatim)...`);
 
-      // BUG-A FIX: Inject any confirmed session state into the summary prompt so the
-      // Flash summarizer is guided to preserve the exact decisions the user made.
-      // This covers the window between session start and confirm_requirements being called.
-      const confirmedStateHint = (this.agentName || this.existingAgentYaml)
-        ? `\n\nIMPORTANT — The following confirmed session state MUST be preserved verbatim in your summary:\n` +
-          (this.agentName ? `- Agent name: ${this.agentName}\n` : '') +
-          (this.existingAgentYaml ? `- An existing agent YAML is loaded for modification.\n` : '')
+      // The flash input = previous summary (continuity, explicitly labeled) +
+      // only the OLDER turns being distilled. Synthetic markers are excluded
+      // (extractTextTurns already skipped them), so the summarizer sees clean
+      // conversation prose, never its own ack turns.
+      const prevSummary = this.contextSummary
+        ? `PREVIOUS SUMMARY (continue from it and fold it into the new summary; do NOT repeat it verbatim):\n${this.contextSummary}`
+        : null;
+      const transcript = [
+        prevSummary,
+        olderTurns.map(t => `${t.role === 'user' ? 'USER' : 'ASSISTANT'}: ${t.text}`).join('\n\n'),
+      ].filter(Boolean).join('\n\n\n');
+
+      // Exact-name hints from the structured build state — the summarizer is
+      // REQUIRED to preserve these verbatim (covers the post-confirmation
+      // build phase, where the old code refused to compress at all).
+      const stateHints = buildBuildStateHints(this);
+      const existingAgentHint = this.existingAgentYaml
+        ? '\n- An existing agent YAML is loaded for modification.'
         : '';
 
-      const summaryPrompt = `You are summarizing a conversation between a user and Agentforge AI (a Salesforce Agentforce builder).\nExtract and preserve exactly the following from the transcript:\n1. Agent name(s) being built or modified\n2. Salesforce objects and fields the user confirmed\n3. Topics (subagents) already created (names, purposes)\n4. Actions already created (names, Apex class names, tools called)\n5. Deploy history (attempts, errors, fixes applied)\n6. Current build state (clarifying / building / deploying / done)\n7. Any explicit user decisions, preferences, or constraints\n8. The user's confirmed escalation strategy (including exact Omni-Channel flow API name if provided)\n9. The user's confirmed database object choice (standard or custom object API name)\n\nBe concise. Use structured headings. No commentary.${confirmedStateHint}\n\nTRANSCRIPT:\n${transcript}`;
+      const summaryPrompt = `You are summarizing a conversation between a user and Agentforge AI (a Salesforce Agentforce builder).\nExtract and preserve exactly the following from the transcript:\n1. Agent name(s) being built or modified\n2. Salesforce objects and fields the user confirmed\n3. Topics (subagents) already created (exact developerName, masterLabel, purpose)\n4. Actions already created (exact developerName, masterLabel, type, Apex class name)\n5. Deploy history (attempts, errors, fixes applied, current status)\n6. Current build state (clarifying / building / deploying / done)\n7. Any explicit user decisions, preferences, or constraints\n8. The user's confirmed escalation strategy (including exact Omni-Channel flow API name if provided)\n9. The user's confirmed database object choice (standard or custom object API name)\n10. The user's most recent request and any pending/unfinished work or next steps\n11. Exact API/developer names of EVERYTHING created (objects, fields, flows, classes, topics, actions)\n12. The user's stated preferences, tone expectations, or process constraints at any point\n\nBe concise. Use structured headings. No commentary.${stateHints}${existingAgentHint}\n\nTRANSCRIPT:\n${transcript}`;
 
       const flashModel = genAI.getGenerativeModel({
         model: process.env.JUDGE_MODEL || 'gemini-3.6-flash'
@@ -969,26 +1211,32 @@ class ConversationManager {
       const result = await flashModel.generateContent(summaryPrompt);
       const summary = result.response.text();
 
-      if (!summary || summary.trim().length < 50) {
+      if (!summary || summary.trim().length < MIN_SUMMARY_LEN) {
         console.warn('[TOKEN_SAVER] Compression produced an empty summary — keeping original history.');
         return;
       }
 
-      // Rebuild chat with a 2-turn synthetic history: summary + model acknowledgment
+      // Rebuild chat: summary pair + the kept verbatim tail. The tail stays in
+      // the LIVE history too, so the immediate thread survives both in-window
+      // and in the durable transcript (transcriptTurns below).
+      const ackTurn = { role: 'model', parts: [{ text: SYNTHETIC_ACKS[0] }] };
       const syntheticHistory = [
         {
           role: 'user',
           parts: [{ text: `[CONTEXT SUMMARY — compact record of our conversation so far. Use it to maintain full context.]\n\n${summary}` }]
         },
-        {
-          role: 'model',
-          parts: [{ text: 'Understood. I have the full context of what has been built, confirmed, and decided so far. Ready to continue.' }]
-        }
+        ackTurn,
+        ...normalizeTurnsIntoHistory(keptTurns, ackTurn)
       ];
 
       this.chat = this.model.startChat({ history: syntheticHistory });
       this.compressionCount++;
-      console.log(`[TOKEN_SAVER] Compression #${this.compressionCount} complete — history reduced from ${history.length} turns to 2 turns.`);
+      // Mirror the compressed state into the durable memory: the summary is
+      // now the record of everything older than the kept tail, and the
+      // verbatim tail restarts from the kept turns (matches the live history).
+      this.contextSummary = summary;
+      this.transcriptTurns = keptTurns;
+      console.log(`[TOKEN_SAVER] Compression #${this.compressionCount} complete — history reduced from ${history.length} turns to ${syntheticHistory.length} turns (summary + ${keptTurns.length} verbatim tail).`);
 
     } catch (compressErr) {
       // Non-fatal — the original chat object is untouched if we never reassigned it
@@ -1270,7 +1518,7 @@ class ConversationManager {
               success: false,
               error: 'BLOCKED: You have not confirmed requirements with the user yet. You MUST ask the user these questions and wait for their answers: 1) Which database object to connect to (or create a new one)? 2) What specific functionality and guardrails does the agent need? 3) Do they want human escalation and do they have an Omni-Channel routing flow? Call confirm_requirements ONLY after the user has answered ALL questions OR explicitly told you to decide for them. DO NOT GUESS without permission.'
             };
-            statusMsg = 'Build tool blocked — awaiting user requirements confirmation';
+            statusMsg = 'Build tool blocked. Awaiting user requirements confirmation';
           } else if (call.name === 'confirm_requirements') {
             if (!call.args.userDidExplicitlyAnswerAll) {
               callResult = { success: false, error: 'REJECTED: userDidExplicitlyAnswerAll is false. You MUST NOT guess answers unless the user explicitly told you to decide for them.' };
@@ -1477,7 +1725,22 @@ class ConversationManager {
           onProgress({ type: 'status', content: 'Assigning Agentforce permissions to Einstein Agent User and your Admin profile...' });
           const assignResult = await sfClient.autoAssignPermissionSet(token, instanceUrl);
 
-          onProgress({ type: 'deploy_success', content: agentUrl, summary: this._buildDeploySummary(deployResult) });
+          onProgress({
+            type: 'deploy_success',
+            content: agentUrl,
+            summary: this._buildDeploySummary(deployResult),
+            // EC-37: signed-audit payload for agent deploys — the engine
+            // intercepts this, strips it from the wire frame, and writes a
+            // signed change record (kind 'agent_deploy') with the pre-deploy
+            // YAML snapshot. agentYaml is the EXISTING agent's YAML for
+            // updates (the pre-deploy state); null for brand-new agents.
+            agentAudit: {
+              agentName,
+              deployId: deployResult.id || null,
+              agentYaml: this.existingAgentYaml || null,
+              deployedAt: new Date().toISOString(),
+            },
+          });
 
           // Surface any permission issues as a dedicated warning event so the
           // frontend can display a banner rather than losing it in the chat.
@@ -1624,6 +1887,10 @@ class ConversationManager {
       return { role: 'assistant', content: finalMsg };
     } finally {
       this.isProcessing = false;
+      // Durable context memory: capture the conversation's text turns after
+      // every turn (including tool-loop and abort paths — whatever made it
+      // into the live history is what gets remembered).
+      this._syncTranscript();
       // BUG-4: Update lastUpdated at END of handleMessage so idle time is measured
       // from when the response was actually completed, not when it started.
       // This ensures sessions don't get incorrectly evicted during long builds.
@@ -1670,4 +1937,7 @@ class ConversationManager {
   }
 }
 
-export { ConversationManager };
+// genAI is exported for testability: unit tests stub getGenerativeModel() with
+// node:test mock.method to exercise _compressHistoryIfNeeded end-to-end without
+// a real Gemini call.
+export { ConversationManager, extractTextTurns, normalizeTurnsIntoHistory, genAI };

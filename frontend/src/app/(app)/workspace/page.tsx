@@ -19,7 +19,7 @@ import Badge from '@/components/ui/Badge';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import PackageHealthChip from '@/components/org/PackageHealthChip';
 import PackageInstallModal from '@/components/org/PackageInstallModal';
-import { useOrgPackageHealth } from '@/lib/orgHealth';
+import { useOrgPackageHealthFor } from '@/lib/orgHealth';
 import { Cpu, ArrowRight, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { apiFetch, getErrorMessage, HEAVY_REQUEST_TIMEOUT_MS } from '@/lib/api';
@@ -61,7 +61,7 @@ function readRedirectNotice(): RedirectNotice | null {
   if (params.get('success') === 'true') {
     return {
       type: 'success',
-      message: 'Salesforce org connected successfully. Your metadata is being indexed — you can begin a governed session now.',
+      message: 'Salesforce org connected successfully. Your metadata is being indexed. You can begin a governed session now.',
     };
   }
   return null;
@@ -190,7 +190,7 @@ function WorkspaceSkeleton() {
 }
 
 /**
- * Unified-app entry: the OrgForge shell mounted ToastProvider at the layout
+ * Unified-app entry: the Forge shell mounted ToastProvider at the layout
  * level; the unified `(app)` layout has no global provider, so the workspace
  * wraps itself so useToast() inside the 10-stage flow works unchanged.
  */
@@ -256,7 +256,9 @@ function WorkspaceFlow() {
   const queryOrgId = getQueryOrgId();
 
   // Package-install health: auto-check after connect/org-switch (Redis-cached
-  // 10 min), re-check on demand, popup once per org per session.
+  // 10 min), re-check on demand, popup once per org per session. Standalone
+  // hook — the workspace tracks its OWN selected org, which may differ from
+  // the app's active org (the shared provider is keyed to the active org).
   const {
     status: pkgStatus,
     health: pkgHealth,
@@ -264,7 +266,7 @@ function WorkspaceFlow() {
     forceRecheck: recheckPackage,
     dismissModal: dismissPkgModal,
     reopenModal: reopenPkgModal
-  } = useOrgPackageHealth(selectedOrg?.id || queryOrgId || null);
+  } = useOrgPackageHealthFor(selectedOrg?.id || queryOrgId || null);
 
   // Surface OAuth callback outcomes (?error= / ?success=true) the backend
   // redirects with after the Salesforce round-trip, then scrub the query
@@ -834,7 +836,7 @@ function WorkspaceFlow() {
                               {refusedGates.map((g) => (
                                 <li key={g.code} className="text-xs text-slate-700 leading-relaxed">
                                   <span className="font-mono font-semibold text-brand-danger">{g.code}</span>
-                                  <span className="text-slate-400"> — </span>
+                                  <span className="text-slate-400">: </span>
                                   {g.plainReason}
                                 </li>
                               ))}
@@ -992,7 +994,7 @@ function WorkspaceFlow() {
               'Gate Still Refused',
               `${evidence.gateCode}: ${
                 gateNow?.plainReason ??
-                'conditions unchanged — complete the unblock path and re-run the evaluation.'
+                'conditions unchanged. Complete the unblock path and re-run the evaluation.'
               }`
             );
           }

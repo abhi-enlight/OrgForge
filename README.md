@@ -34,6 +34,7 @@ orgforge/
     ├── README.md               # Documentation map & index
     ├── api/                    # API contract & reference docs (api_contract.md, API.md)
     ├── architecture/           # System design & architecture (unification_plan.md, DECISIONS.md, APP_FLOW.md, ...)
+    ├── setup/                  # Setup guides (github_app_setup.md, packaged_eca_setup.md)
     ├── specifications/         # Requirements & plan trackers (PRD.md, IMPLEMENTATION_PLAN.md, ...)
     ├── operations/             # Phase 5 rollout & redesign plans (PHASE5_PLAN.md, ...)
     └── legacy/                 # Imported legacy PRDs (OrgForge_PRD.md, Agentforge_PRD.md)
@@ -50,36 +51,5 @@ npm test                    # runs all package tests (workspaces)
 ```
 
 `npm run dev` uses `concurrently` — prefixed logs (`[backend]` / `[frontend]`),
-Ctrl+C stops both. The backend dev/start scripts enable the capability flags
-(`FORGE_UNIFIED_API=on FORGE_MOUNT_AGENTFORGE=on`) so the web app's APIs are
-fully mounted.
-
-Env reference: `.env.example`. **Do not commit `.env`.**
-
-## Build order (plan Appendix A)
-
-1. ✅ `packages/auth` — requireAuth + tenantIsolation
-2. ✅ `packages/org-connections` — unified read/refresh + re-link
-3. ✅ Merge API entry (E1 → Pass 32 native port): OrgForge + Agentforge routers
-   are first-class in-repo modules (`backend/src/orgforge/` + `backend/src/agentforge/`);
-   the `@forge/compat` CJS adapter was retired. `/api/v1/health`, JSON 404,
-   `POST /api/v1/auth/link-legacy` wired (§8.4); both route surfaces verified
-   booting (OrgForge `401`, Agentforge `302`/`401`)
-4. ✅ Unified frontend shell + login (3-step onboarding incl. GitHub install + repo picker) + dashboard + Copilot chat (with inline org-change cards) + Agents + Changes & Audit + Settings (Phase 4: `frontend`, streaming over `/api/v1/chat/stream`)
-5. ✅ `forge` schema + org re-link + encryption-key decision — SQL applied to live Supabase project via MCP (Pass 43: created 6 `forge.*` tables with RLS policies: `org_connections`, `agents`, `chat_sessions`, `routing_log`, `diagnostics`, `ai_logs`).
-6. ✅ `packages/diagnostics` — Agentforge pre-flight, server-side cached (24h cache with S-2 degrade and EC-14 package-missing self-healing).
-7. ✅ Canary flag + soak ready — `@supabase/ssr` middleware route protection, `forgeDb`/`publicDb` client singletons, chat sessions spine, and all Phase 4 features live.
-8. ⏳ Copy audit, canary, soak, decommission
-
-## Phase-0 baseline (regression oracle — recorded 2026-08-10)
-
-| Suite | Result |
-|---|---|
-| OrgForge backend (`OrgForge/backend`) | **138/138 pass** |
-| OrgForge frontend Playwright e2e | pending (`npm run test:e2e`) |
-| Agentforge backend | no unit-test files in `src/` (AI Judge cron tested manually) |
-| orgforge packages | **97/97 pass** (`npm test`) |
-| `frontend` (Next 16 + Tailwind v4) | tsc ✅ lint ✅ build ✅ (10 static routes; Copilot streaming + chips + inline org-change cards; Agents + Changes + Settings pages) |
-
-Freeze these before Phase 2 mounts the routers; any merged-process regression must be measured against this table (§14.2).
-
+Ctrl+C stops both. The backend dev/start scripts enable the capability flag
+(`FORGE_UNIFIED_API=on`) so the web app's APIs are fully mounted.

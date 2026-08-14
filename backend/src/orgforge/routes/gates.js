@@ -2,7 +2,7 @@ import express from 'express';
 import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
 const requireAuth = createAuthMiddleware();
 import { refusalGateEngine } from '../services/refusalGateEngine.js';
-import { getOrgCredentials } from '../services/orgCredentials.js';
+import { getOrgCredentials } from '@forge/org-connections';
 import { impactAnalyzer } from '../services/impactAnalyzer.js';
 import { staticAnalyzer } from '../services/staticAnalysis.js';
 import fs from 'fs/promises';
@@ -154,6 +154,15 @@ router.post('/evaluate', async (req, res) => {
 
     res.json(evaluation);
   } catch (error) {
+    // getOrgCredentials throws 401 when the stored refresh token is dead
+    // (EC-10) — discriminate so the frontend shows "Reconnect Salesforce"
+    // instead of treating the 401 as a session expiry and signing out.
+    if (error.status === 401) {
+      return res.status(401).json({
+        error: 'Reconnect this org. Salesforce access could not be refreshed',
+        code: 'ORG_RECONNECT_REQUIRED',
+      });
+    }
     console.error('Gates Evaluation Error:', error);
     res.status(500).json({ error: 'Failed to evaluate gates' });
   }

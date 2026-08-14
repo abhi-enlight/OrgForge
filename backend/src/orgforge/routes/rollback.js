@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
 const requireAuth = createAuthMiddleware();
 import { rollbackService } from '../services/rollbackService.js';
-import { getOrgCredentials } from '../services/orgCredentials.js';
+import { getOrgCredentials } from '@forge/org-connections';
 
 const router = express.Router();
 router.use(requireAuth, tenantIsolation);
@@ -48,6 +48,15 @@ router.post('/', async (req, res) => {
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: 'Validation failed', issues: err.errors });
+    }
+    // getOrgCredentials throws 401 when the stored refresh token is dead
+    // (EC-10) — discriminate so the frontend shows "Reconnect Salesforce"
+    // instead of treating the 401 as session expiry and signing the user out.
+    if (err.status === 401) {
+      return res.status(401).json({
+        error: 'Reconnect this org. Salesforce access could not be refreshed',
+        code: 'ORG_RECONNECT_REQUIRED',
+      });
     }
     console.error('Rollback error:', err.message);
     const status = err.status || 500;

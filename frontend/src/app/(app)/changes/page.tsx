@@ -18,6 +18,8 @@ interface GateResult {
 interface ChangeRecord {
   id?: string;
   orgId?: string;
+  kind?: string;
+  agentName?: string | null;
   intentText?: string;
   businessRationale?: string;
   approverIdentity?: string;
@@ -94,7 +96,7 @@ function timeAgo(iso?: string): string {
 
 /**
  * RFC-4180 cell escaping: quotes when the value contains a comma, quote,
- * newline, or carriage return, doubling embedded quotes. (OrgForge only
+ * newline, or carriage return, doubling embedded quotes. (Forge only
  * escaped intent/approver; this is the strict form for all evidence fields.)
  */
 function csvCell(value: string | number | null | undefined): string {
@@ -109,13 +111,13 @@ function serializeGateResults(gates?: GateResult[] | null): string {
     .map((g) => {
       const code = g.gateCode ? String(g.gateCode) : 'GATE';
       const outcome = g.outcome ? String(g.outcome).toUpperCase() : '?';
-      return `${code} ${outcome}${g.plainLanguageReason ? ` — ${g.plainLanguageReason}` : ''}`;
+      return `${code} ${outcome}${g.plainLanguageReason ? `: ${g.plainLanguageReason}` : ''}`;
     })
     .join('; ');
 }
 
 /**
- * Builds the full audit-log CSV (OrgForge history convention: `-audit-log-
+ * Builds the full audit-log CSV (Forge history convention: `-audit-log-
  * <date>.csv`, header row + one row per record, full list — not the filtered
  * view). Columns carry the signed evidence: rationale, blast radius, gates,
  * dry run, deployment, git commit, HMAC signature, skills.
@@ -230,7 +232,7 @@ export default function ChangesPage() {
     setRefreshing(false);
   };
 
-  /** Full-log CSV export (OrgForge history convention) — the signed evidence trail. */
+  /** Full-log CSV export (Forge history convention) — the signed evidence trail. */
   const handleExport = () => {
     if (!records || records.length === 0) return;
     // Synchronous client-side download — no spinner needed (React would batch
@@ -261,7 +263,7 @@ export default function ChangesPage() {
           Connect Salesforce to see your audit trail
         </h1>
         <p className="mt-3 text-slate-500 max-w-md">
-          Every governed change gets a signed, tamper-evident record here — approvals, blast radius, gates, and the
+          Every governed change gets a signed, tamper-evident record here: approvals, blast radius, gates, and the
           final deployment.
         </p>
         <Link
@@ -306,7 +308,7 @@ export default function ChangesPage() {
             href="/chat"
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue text-white text-sm font-semibold shadow-glow hover:bg-brand-blue-hover transition-colors"
           >
-            <Sparkles className="w-4 h-4" /> Ask OrgForge
+            <Sparkles className="w-4 h-4" /> Ask Forge
           </Link>
         </div>
       </div>
@@ -377,7 +379,7 @@ export default function ChangesPage() {
       {error && (
         <div className="flex items-center gap-3 rounded-2xl border border-brand-warning/30 bg-brand-warning-bg px-5 py-4 animate-slide-up">
           <RefreshCw className="w-4 h-4 text-brand-warning shrink-0" />
-          <p className="text-sm text-slate-700 flex-1">Couldn&apos;t load the audit trail — {error}</p>
+          <p className="text-sm text-slate-700 flex-1">Couldn&apos;t load the audit trail: {error}</p>
           <button type="button" onClick={refresh} className="text-sm font-semibold text-brand-warning hover:underline cursor-pointer">
             Retry
           </button>
@@ -407,7 +409,12 @@ export default function ChangesPage() {
             const expanded = expandedId === id;
             const badge = statusBadge(record.status);
             const radius = record.blastRadius ?? record.impactBrief?.blastRadiusClassification ?? null;
-            const intent = record.intentText || 'Governed change';
+            // EC-37: agent deploys get the same signed-record trail as org
+            // changes — surfaced with their own kind badge + agent name.
+            const isAgentDeploy = record.kind === 'agent_deploy';
+            const intent =
+              record.intentText ||
+              (isAgentDeploy ? `Deploy agent ${record.agentName || ''}`.trim() : 'Governed change');
             return (
               <li
                 key={id}
@@ -428,10 +435,12 @@ export default function ChangesPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2.5">
                       <p className="text-sm font-semibold text-brand-dark truncate">{intent}</p>
+                      <Badge variant="muted">{isAgentDeploy ? 'Agent deploy' : 'Org change'}</Badge>
                       <Badge variant={badge.variant}>{badge.label}</Badge>
                     </div>
                     <p className="text-xs text-slate-400 mt-0.5 truncate">
                       {record.orgId ? <span className="font-mono">{record.orgId}</span> : 'org'}
+                      {isAgentDeploy && record.agentName ? ` · agent ${record.agentName}` : ''}
                       {record.approverIdentity ? ` · approved by ${record.approverIdentity}` : ''}
                     </p>
                   </div>
@@ -456,7 +465,7 @@ export default function ChangesPage() {
                             <Badge variant={blastVariant(radius)}>{radius}</Badge>
                           </div>
                         ) : (
-                          <p className="mt-1 text-sm text-slate-400">—</p>
+                          <p className="mt-1 text-sm text-slate-400">–</p>
                         )}
                       </div>
                       {record.approverIdentity && (
@@ -504,7 +513,7 @@ export default function ChangesPage() {
                             >
                               {g.gateCode || 'gate'}
                               {g.outcome ? ` · ${g.outcome}` : ''}
-                              {g.plainLanguageReason ? ` — ${g.plainLanguageReason}` : ''}
+                              {g.plainLanguageReason ? `: ${g.plainLanguageReason}` : ''}
                             </span>
                           ))}
                         </div>
@@ -551,7 +560,7 @@ export default function ChangesPage() {
           <p className="text-sm text-slate-500">
             {query.trim() || statusFilter !== 'all'
               ? 'No records match your filters.'
-              : 'No governed changes yet — every deployment gets a signed record here.'}{' '}
+              : 'No governed changes yet. Every deployment gets a signed record here.'}{' '}
             <Link href="/chat?prompt=Add%20a%20validation%20rule%20to%20Opportunity" className="text-brand-blue font-medium hover:underline">
               Request a governed change
             </Link>
@@ -565,7 +574,7 @@ export default function ChangesPage() {
           {refusalsError ? (
             <div className="flex items-center gap-3 rounded-2xl border border-brand-warning/30 bg-brand-warning-bg px-5 py-4 animate-slide-up">
               <RefreshCw className="w-4 h-4 text-brand-warning shrink-0" />
-              <p className="text-sm text-slate-700 flex-1">Couldn&apos;t load refusals — {refusalsError}</p>
+              <p className="text-sm text-slate-700 flex-1">Couldn&apos;t load refusals: {refusalsError}</p>
               <button type="button" onClick={loadRefusals} className="text-sm font-semibold text-brand-warning hover:underline cursor-pointer">
                 Retry
               </button>
@@ -588,7 +597,7 @@ export default function ChangesPage() {
             <ul className="space-y-3">
               {refusals.map((ref) => {
                 const gate = ref.gateCode || 'GATE';
-                const prompt = `Explain the ${gate} refusal: ${ref.reason ?? ''} — how do I unblock it?`;
+                const prompt = `Explain the ${gate} refusal: ${ref.reason ?? ''}. How do I unblock it?`;
                 return (
                   <li
                     key={ref.id || `${gate}-${ref.createdAt ?? ''}`}
@@ -641,7 +650,7 @@ export default function ChangesPage() {
                 <ShieldAlert className="w-6 h-6 text-slate-400" />
               </span>
               <p className="text-sm text-slate-500">
-                No refusals recorded — every blocked change shows up here with the plain-language reason and how to unblock it.
+                No refusals recorded. Every blocked change shows up here with the plain-language reason and how to unblock it.
               </p>
               {refusalsNote && <p className="mt-2 text-xs text-slate-400">{refusalsNote}</p>}
             </div>

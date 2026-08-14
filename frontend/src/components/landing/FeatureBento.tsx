@@ -43,13 +43,13 @@ export function FeatureBento() {
         />
         <Reveal variant="mask-line">
           <h2 className="max-w-2xl text-4xl font-bold tracking-[-0.02em] text-brand-dark sm:text-5xl">
-            Built for the whole change lifecycle
+            Every change, from idea to signed deploy
           </h2>
         </Reveal>
         <Reveal delay={0.12}>
           <p className="mt-4 max-w-2xl text-lg leading-relaxed text-text-secondary">
-            Everything a Salesforce team needs to move from idea to shipped
-            change without leaving the chat.
+            Impact analysis, refusal gates, dry-runs, and a signed record,
+            without leaving the chat.
           </p>
         </Reveal>
 
@@ -149,7 +149,7 @@ export function FeatureBento() {
                 <Waypoints className="h-5 w-5 text-brand-blue" />
               </div>
               <h3 className="mt-5 text-lg font-bold tracking-tight text-brand-dark">
-                One routing brain
+                Automatic routing
               </h3>
               <p className="mt-2.5 leading-relaxed text-text-secondary">
                 A classifier decides between agent work, org changes, or both,

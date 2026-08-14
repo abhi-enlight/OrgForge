@@ -5,7 +5,7 @@
  *
  * Matches the shapes the unified stack actually sees:
  *   - supabase-js / PostgREST: "Could not find the table 'forge.x' in schema
- *     cache", PGRST106 "Invalid schema: forge"
+ *     cache", PGRST106 "Invalid schema: orgforge"
  *   - raw pg: 'relation "forge.routing_log" does not exist'
  *
  * @param {unknown} err
@@ -18,7 +18,7 @@ export function isMissingTableError(err) {
 
 /**
  * Narrower classifier: the whole `forge` schema is absent (PGRST106 /
- * "Invalid schema: forge") — i.e. migration 008 has not been applied yet.
+ * "Invalid schema: orgforge") — i.e. migration 008 has not been applied yet.
  * Used by GET /api/v1/health/db to report the S-2 migration as pending.
  *
  * @param {unknown} err

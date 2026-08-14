@@ -37,7 +37,7 @@ function remediationCopy(gate: GateResult): string {
     case 'REF-07':
       return 'This is a production org. Enable production deployment mode and record the executive/approver identity that authorizes the write.';
     case 'REF-05':
-      return 'OrgForge cannot delete or modify records on your behalf. Clean up the violating records directly in Salesforce, then re-run the evaluation to confirm the gate passes.';
+      return 'Forge cannot delete or modify records on your behalf. Clean up the violating records directly in Salesforce, then re-run the evaluation to confirm the gate passes.';
     default:
       return 'Complete the required action listed under the unblock path, then re-run the evaluation to confirm the gate now passes.';
   }
@@ -218,7 +218,7 @@ export default function UnblockActionModal({
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-[11px] text-amber-900 leading-relaxed">
                   This gate cannot be cleared automatically. Complete the required action in Salesforce
-                  (or elsewhere) first, then re-run the evaluation — it will pick up the updated state.
+                  (or elsewhere) first, then re-run the evaluation. It will pick up the updated state.
                 </p>
               </div>
             )}

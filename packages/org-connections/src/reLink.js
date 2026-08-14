@@ -47,7 +47,7 @@ export async function linkLegacyAgentforgeOrgs({ supabase, legacyJwt, userId, se
   }
 
   // Legacy RPC keyed by agentforge_user_id (exposed in the shared project).
-  const { data: legacyRows, error } = await supabase.rpc('get_connections_by_agentforge_user', {
+  const { data: legacyRows, error } = await supabase.schema('public').rpc('get_connections_by_agentforge_user', {
     p_agentforge_user_id: agentforgeUserId,
   });
 
@@ -92,7 +92,7 @@ export async function linkLegacyAgentforgeOrgs({ supabase, legacyJwt, userId, se
     if (!upsertError) {
       linked += 1;
       // Best-effort cleanup of the legacy row so it cannot be re-parented twice.
-      await supabase
+      await supabase.schema('public')
         .rpc('delete_salesforce_connection_by_user', {
           p_agentforge_user_id: agentforgeUserId,
           p_org_id: row.org_id,

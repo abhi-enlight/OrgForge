@@ -206,9 +206,9 @@ That architecture is why PRD compliance is high: **the features are the legacy f
 |---|---|---|---|
 | S-2 | Apply migration `008_forge_schema.sql` (+ `010` RPCs) via Supabase | user (MCP/dashboard) | `/health/db` healthy; `forge.*` persistence for chat/routing/diagnostics |
 | S-3 | **Verify** OrgForge migrations 001–007 are actually applied | verify | OrgForge's own roadmap (Aug 2026) flagged `003`–`005` as **missing (A1, PGRST205)** — the unified README asserts they're applied; the two claims conflict and only a live check settles it. `/changes/intent`-class persistence depends on it |
-| A2 | Run the full 10-stage flow against a real sandbox | **harness ready (Passes 30–31); needs a live user + sandbox** | `backend/scripts/driveWorkspaceFlow.mjs` automates stages 1→10 and verifies the HMAC-SHA256 signed audit record (`--self-test` validates the toolchain without an org; `--org-alias` targets an org by alias; `--report <file>` leaves a machine-readable JSON audit trail on every terminal path — success, governance-held, deploy-blocked, failure, usage-error; `--deploy` enables the write stages, gated on `--ack-destructive` for REF-06 changes). Blocked on: a real Supabase user (auth.users is empty) + a sandbox connected through the app's OAuth flow (all 11 `org_connections` rows are test fixtures) + **S-2** migration 008 |
+| A2 | Run the full 10-stage flow against a real sandbox | **harness deleted (2026-08-14); needs a fresh approach + a live user + sandbox** | The `driveWorkspaceFlow.mjs` harness (Passes 30–31, HMAC-verifying) was removed from the working tree; this is now **F-4** (live-agent e2e through `POST /api/v1/chat/stream`) in `FUTURE_IMPLEMENTATION.md`. Blocked on: a real Supabase user + a sandbox connected through the app's OAuth flow |
 | — | §4 frontend gaps: **all closed (Passes 24–28)** — CSV export, refusal-log view, 10-stage workspace, YAML drawer, Settings-Advanced | engineering | unified frontend "PRD complete" (§4 above) ✅ |
-| 011 | EC-37 agent-deploy snapshot columns (draft when Phase 3 data work starts) | engineering | rollback-for-agents |
+| 014 | EC-37 agent-deploy snapshot columns (**migration 014 drafted + code done 2026-08-14**; 🔷 apply via MCP) | engineering | rollback-for-agents |
 | — | Nightly AI-Judge decision (Agentforge §8) | decision | Phase 5 decommission (PHASE5_PLAN §3) |
 
 ---

@@ -2,7 +2,7 @@
  * Server-side diagnostics cache (plan §12.4.7, EC-21).
  *
  * Replaces Agentforge's localStorage 24h cache with a server-side store:
- *   - Result persisted to `forge.diagnostics` (user_id, org_id, state,
+ *   - Result persisted to `orgforge.diagnostics` (user_id, org_id, state,
  *     detail, checked_at) — table created by migration 008 (S-2).
  *   - 24h TTL, refreshed on read when stale.
  *   - In-memory promise dedup per (user, org): concurrent requests share ONE
@@ -11,8 +11,8 @@
  *   - Table-missing is non-fatal: we run the check and serve it uncached, so
  *     the API degrades gracefully before migration 008 is applied.
  *
- * The db client MUST be scoped to the `forge` schema (supabase-js option
- * `db: { schema: 'forge' }`).
+ * The db client MUST be scoped to the `orgforge` schema (supabase-js option
+ * `db: { schema: 'orgforge' }`).
  */
 export const DIAGNOSTICS_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 

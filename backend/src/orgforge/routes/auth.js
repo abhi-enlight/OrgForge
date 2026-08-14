@@ -1,10 +1,10 @@
 import express from 'express';
 import { z } from 'zod';
 import { salesforceClient } from '../services/salesforceClient.js';
-import { encrypt } from '../utils/cryptoUtils.js';
+import { encrypt } from '@forge/org-connections';
 import { createAuthMiddleware } from '@forge/auth';
 const requireAuth = createAuthMiddleware();
-import { supabaseAdmin } from '../services/supabaseClient.js';
+import { supabaseAdmin } from '../../lib/supabaseClients.js';
 import { orgIndexQueue, redisConnection } from '../jobs/queue.js';
 
 const router = express.Router();
@@ -83,16 +83,16 @@ router.get('/salesforce/callback', async (req, res) => {
     const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
     
     if (error) {
-      return res.redirect(`${corsOrigin}/workspace?error=${encodeURIComponent(error_description || error)}`);
+      return res.redirect(`${corsOrigin}/login?step=2&error=${encodeURIComponent(error_description || error)}`);
     }
 
     if (!code || !state) {
-      return res.redirect(`${corsOrigin}/workspace?error=MissingAuthData`);
+      return res.redirect(`${corsOrigin}/login?step=2&error=MissingAuthData`);
     }
 
     const session = await getOAuthState(state);
     if (!session) {
-      return res.redirect(`${corsOrigin}/workspace?error=InvalidOrExpiredState`);
+      return res.redirect(`${corsOrigin}/login?step=2&error=InvalidOrExpiredState`);
     }
 
     await deleteOAuthState(state); // Clean up immediately after use
@@ -126,14 +126,20 @@ router.get('/salesforce/callback', async (req, res) => {
         org_type: session.orgType,
         alias: session.alias,
         instance_url: tokens.instanceUrl,
-        encrypted_tokens: encryptedTokens
+        encrypted_tokens: encryptedTokens,
+        // EC-10 lifecycle: a successful reconnect clears the disconnected flag
+        // (set when a token refresh failed) so the org returns to the
+        // connected state — otherwise a revoked-token org stays flagged
+        // "disconnected" forever even after re-linking through OAuth.
+        disconnected_at: null,
+        updated_at: new Date().toISOString()
       }, {
         onConflict: 'user_id, org_id'
       });
 
     if (dbError) {
       console.error('DB Insert Error:', dbError);
-      return res.redirect(`${corsOrigin}/workspace?error=DatabaseError`);
+      return res.redirect(`${corsOrigin}/login?step=2&error=DatabaseError`);
     }
     
     // Enqueue the indexing worker (non-fatal: the connection is already saved,
@@ -148,12 +154,16 @@ router.get('/salesforce/callback', async (req, res) => {
       console.warn('Failed to enqueue indexing job (will retry via /orgs/:orgId/index):', queueError.message);
     }
     
-    // Success! Redirect back to frontend
-    res.redirect(`${corsOrigin}/workspace?success=true`);
+    // Success! Return to the onboarding flow where the user started (the
+    // connect buttons all live on /login?step=2) — landing on /login?step=3
+    // shows the "You're all set" screen, which then offers GitHub + dashboard.
+    // (Previously this redirected to /workspace, pulling the user out of the
+    // onboarding flow after a connect from /login.)
+    res.redirect(`${corsOrigin}/login?step=3`);
   } catch (err) {
     console.error('OAuth Exchange Error:', err);
     const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
-    res.redirect(`${corsOrigin}/workspace?error=ExchangeFailed`);
+    res.redirect(`${corsOrigin}/login?step=2&error=ExchangeFailed`);
   }
 });
 

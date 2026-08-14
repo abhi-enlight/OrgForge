@@ -52,7 +52,7 @@ export function CtaSection() {
             />
             <div className="relative">
               <h2 className="mx-auto max-w-2xl text-4xl font-bold tracking-[-0.02em] text-white sm:text-5xl">
-                Your org speaks Salesforce. OrgForge speaks you.
+                Make your first governed change today
               </h2>
               <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-white/70">
                 Connect your org and ask for the first change or agent. No
@@ -63,7 +63,7 @@ export function CtaSection() {
                   href="/login"
                   className="group inline-flex items-center gap-2 rounded-full bg-brand-blue px-8 py-4 text-sm font-semibold text-white shadow-glow transition-all duration-200 hover:bg-brand-blue-hover hover:shadow-glow-lg active:scale-[0.98]"
                 >
-                  Open OrgForge
+                  Open Forge
                   <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
                 </Link>
               </div>

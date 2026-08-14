@@ -20,12 +20,12 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
   title: {
-    default: 'OrgForge — Salesforce AI Agents & Governed Org Changes',
-    template: '%s | OrgForge',
+    default: 'Forge: Salesforce AI Agents & Governed Org Changes',
+    template: '%s | Forge',
   },
   description:
-    'OrgForge is the unified Enlight Lab platform: build and deploy Salesforce Agentforce agents in natural language, and make governed org changes with impact analysis and refusal gates.',
-  applicationName: 'OrgForge',
+    'Forge is the unified Enlight Lab platform: build and deploy Salesforce Agentforce agents in natural language, and make governed org changes with impact analysis and refusal gates.',
+  applicationName: 'Forge',
   authors: [{ name: 'Enlight Lab' }],
   creator: 'Enlight Lab',
   publisher: 'Enlight Lab',
@@ -39,19 +39,19 @@ export const metadata: Metadata = {
     apple: '/favicon.png',
   },
   openGraph: {
-    title: 'OrgForge — Salesforce AI Agents & Governed Org Changes',
+    title: 'Forge: Salesforce AI Agents & Governed Org Changes',
     description:
-      'OrgForge is the unified Enlight Lab platform: build and deploy Salesforce Agentforce agents in natural language, and make governed org changes with impact analysis and refusal gates.',
-    siteName: 'OrgForge by Enlight Lab',
-    images: [{ url: '/enlight-logo.png', width: 1200, height: 630, alt: 'OrgForge by Enlight Lab' }],
+      'Forge is the unified Enlight Lab platform: build and deploy Salesforce Agentforce agents in natural language, and make governed org changes with impact analysis and refusal gates.',
+    siteName: 'Forge by Enlight Lab',
+    images: [{ url: '/enlight-logo.png', width: 1200, height: 630, alt: 'Forge by Enlight Lab' }],
     locale: 'en_US',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'OrgForge — Salesforce AI Agents & Governed Org Changes',
+    title: 'Forge: Salesforce AI Agents & Governed Org Changes',
     description:
-      'OrgForge is the unified Enlight Lab platform: build and deploy Salesforce Agentforce agents in natural language, and make governed org changes with impact analysis and refusal gates.',
+      'Forge is the unified Enlight Lab platform: build and deploy Salesforce Agentforce agents in natural language, and make governed org changes with impact analysis and refusal gates.',
   },
 };
 

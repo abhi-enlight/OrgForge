@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Menu, ChevronDown, LogOut, User, Zap, Cloud, FlaskConical } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { apiFetch } from '@/lib/api';
 import { useActiveOrg, type OrgSummary } from '@/lib/org-context';
 import { ForgeLogo } from '@/components/brand/ForgeLogo';
 import { cn } from '@/lib/utils';
@@ -24,13 +23,14 @@ const ORG_TYPE_LABEL: Record<OrgSummary['orgType'], string> = {
 const ORG_TYPE_ICON = { production: Zap, sandbox: Cloud, scratch: FlaskConical };
 
 /**
- * Top bar (plan §6.1): ORG FORGE wordmark, live org pill (type-aware, global
+ * Top bar (plan §6.1): FORGE wordmark, live org pill (type-aware, global
  * switcher — switching orgs confirms first, EC-25), avatar menu with sign-out.
- * Refreshes the org list on mount so the pill stays live across pages.
+ * The org list comes from the shared ActiveOrgProvider (fetched once per tab
+ * session, not on every page load) — this component only renders it.
  */
 export default function Header({ onOpenMobileNav, isMobileNavOpen }: HeaderProps) {
   const router = useRouter();
-  const { org, orgs, setOrgs, selectOrg } = useActiveOrg();
+  const { org, orgs, selectOrg } = useActiveOrg();
   const [orgMenuOpen, setOrgMenuOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
@@ -38,25 +38,8 @@ export default function Header({ onOpenMobileNav, isMobileNavOpen }: HeaderProps
   const avatarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    (async () => {
-      supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
-      try {
-        const { orgs: fetched } = await apiFetch<{
-          orgs: Array<{ id: string; alias?: string; type?: string; instanceUrl?: string }>;
-        }>('/api/v1/orgs');
-        setOrgs(
-          (fetched || []).map((o) => ({
-            id: o.id,
-            name: o.alias || o.id,
-            orgType: (['production', 'sandbox', 'scratch'].includes(o.type || '') ? o.type : 'production') as OrgSummary['orgType'],
-            instanceUrl: o.instanceUrl,
-          }))
-        );
-      } catch {
-        /* unauthenticated or backend down — pill stays empty, calm */
-      }
-    })();
-  }, [setOrgs]);
+    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
+  }, []);
 
   // Close menus on outside click.
   useEffect(() => {
@@ -184,7 +167,7 @@ export default function Header({ onOpenMobileNav, isMobileNavOpen }: HeaderProps
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-brand-dark truncate">{email || 'Signed in'}</p>
                 <p className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <User className="w-3 h-3" /> OrgForge
+                  <User className="w-3 h-3" /> Forge
                 </p>
               </div>
             </div>

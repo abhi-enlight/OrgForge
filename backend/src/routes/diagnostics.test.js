@@ -104,7 +104,9 @@ test('refresh failure surfaces 401 "Reconnect this org" (EC-10)', async () => {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/v1/diagnostics?orgId=00D000000000001`);
     assert.equal(res.status, 401);
-    assert.match((await res.json()).error, /Reconnect this org/);
+    const body = await res.json();
+    assert.match(body.error, /Reconnect this org/);
+    assert.equal(body.code, 'ORG_RECONNECT_REQUIRED', 'discriminator: not a session-auth 401');
   } finally {
     server.close();
   }

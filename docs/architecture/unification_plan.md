@@ -152,7 +152,7 @@ Audited from the two codebases (June–Aug 2026 state):
 
 ### D. How to unify the org-connection store
 
-**D1 — One table, both engines read it (recommended).** Migrate `salesforce.salesforce_connections` rows into `orgforge.org_connections` (or a new `forge.org_connections`), add `capabilities text[]` and `legacy_agentforge_user_id`. One OAuth flow per org; both engines resolve credentials through one service.
+**D1 — Strict orgforge schema isolation.** Migrate `salesforce.salesforce_connections` rows into `orgforge.org_connections`, add `capabilities text[]` and `legacy_agentforge_user_id`. One OAuth flow per org; the backend and copilot engine strictly resolve credentials through the `orgforge` schema, ensuring legacy data in the `public` schema is completely untouched.
 - ✅ Single source of truth; one encrypted-token format; one `ENCRYPTION_KEY`. ❌ Needs a migration + a decision on which key wins (§9.3).
 
 **D2 — Keep both tables, sync on connect.** ❌ Duplicated credentials, double encryption, drift risk. **Rejected.**

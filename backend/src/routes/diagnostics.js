@@ -9,6 +9,25 @@ const paramsSchema = z.object({
   orgId: z.string().min(3).max(18),
 });
 
+// OrgForge Connector package metadata (same ids + URL shape as
+// orgforge/routes/orgs.js — keep the two in sync). The 033 SubscriberPackageId
+// and 04t version id come from the Dev Hub package; env overrides win.
+const ORGFORGE_PACKAGE_VERSION_ID =
+  process.env.FORGE_ECA_PACKAGE_VERSION_ID ||
+  process.env.ORGFORGE_PACKAGE_VERSION_ID ||
+  '04tfj000000QFHxAAO';
+
+/** Builds the Salesforce package-installer URL for an org type (mirrors orgs.js). */
+function buildInstallUrl(orgType, instanceUrl) {
+  const base =
+    orgType === 'sandbox'
+      ? 'https://test.salesforce.com'
+      : orgType === 'scratch'
+        ? (instanceUrl || '').replace(/\/$/, '')
+        : 'https://login.salesforce.com';
+  return `${base}/packaging/installPackage.apexp?p0=${ORGFORGE_PACKAGE_VERSION_ID}`;
+}
+
 // Shared singletons from lib/supabaseClients.js — one connection pool per schema per process.
 const forgeSchemaClient = () => forgeDbSingleton;
 
@@ -77,7 +96,14 @@ export function createDiagnosticsRouter({
         return res.status(404).json({ error: 'Org connection not found' });
       }
       if (err.status === 401) {
-        return res.status(401).json({ error: 'Reconnect this org — Salesforce access could not be refreshed' });
+        // ORG_RECONNECT_REQUIRED discriminates this 401 from a session-auth
+        // 401: the user's app session is fine — only the Salesforce org needs
+        // reconnecting. The frontend checks this code before deciding to sign
+        // the user out (EC-10).
+        return res.status(401).json({
+          error: 'Reconnect this org. Salesforce access could not be refreshed',
+          code: 'ORG_RECONNECT_REQUIRED',
+        });
       }
       throw err;
     }
@@ -91,6 +117,18 @@ export function createDiagnosticsRouter({
       orgId,
       forceRecheck,
     });
+
+    // When the connector package is missing, carry the org-aware Salesforce
+    // install link (the same URL the package-health route returns) so every
+    // "setup needed" surface — the readiness banner, Settings → Advanced,
+    // the agents page — can send the user straight to the package installer
+    // instead of only saying "install it". Additive: a cached row written
+    // before this field existed simply lacks it and the UI degrades to a
+    // Settings pointer.
+    if (result?.checks?.package?.installed === false) {
+      result.installUrl = buildInstallUrl(creds.orgType, creds.instanceUrl);
+      result.packageVersionId = ORGFORGE_PACKAGE_VERSION_ID;
+    }
 
     return res.json(result);
   };

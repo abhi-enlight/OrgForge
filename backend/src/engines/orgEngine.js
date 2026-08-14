@@ -133,7 +133,7 @@ export function createOrgEngine({ loader = defaultLoader } = {}) {
 
   const gap = (onEvent, stage, action) => (err) => {
     const reason = err?.message || String(err);
-    onEvent({ type: 'status', content: `${action} — ${reason}` });
+    onEvent({ type: 'status', content: `${action}: ${reason}` });
     onEvent({
       type: 'deploy_warning',
       content: `${action}. The pipeline stopped before any deployment: ${reason}`,
@@ -153,9 +153,13 @@ export function createOrgEngine({ loader = defaultLoader } = {}) {
      * @param {object} opts.creds - {accessToken, instanceUrl} from the route
      * @param {string} [opts.userId] - Supabase user id (audit record owner)
      * @param {string} [opts.orgId] - Salesforce org id (audit record scope)
+     * @param {string} [opts.priorContext] - bounded digest of earlier turns in
+     *   THIS session (context-memory pass). Injected into intent parsing and
+     *   metadata generation only — never into the audit record, which keeps
+     *   the original `message`.
      * @param {(ev: object) => void} opts.onEvent
      */
-    async runOrgChange({ message, sessionKey, creds, userId, orgId, onEvent }) {
+    async runOrgChange({ message, sessionKey, creds, userId, orgId, priorContext, onEvent }) {
       void sessionKey;
       const { accessToken, instanceUrl } = creds || {};
       const orgType = detectOrgType(instanceUrl);
@@ -168,7 +172,7 @@ export function createOrgEngine({ loader = defaultLoader } = {}) {
       try {
         const { aiOrchestrator: ai } = await load('services/aiOrchestrator.js');
         const { normalizeOperation } = await load('utils/aiSafety.js');
-        structuredIntent = await ai.parseIntent(message, DEFAULT_RATIONALE, MINIMAL_ORG_CONTEXT);
+        structuredIntent = await ai.parseIntent(message, DEFAULT_RATIONALE, MINIMAL_ORG_CONTEXT, priorContext);
         operation = normalizeOperation(structuredIntent?.operation);
         targetComponent = structuredIntent?.targetComponent;
         if (!operation || operation === 'UNKNOWN') {
@@ -191,7 +195,7 @@ export function createOrgEngine({ loader = defaultLoader } = {}) {
         const { aiOrchestrator: ai } = await load('services/aiOrchestrator.js');
         const { skillResolver } = await load('services/skillResolver.js');
         const skill = skillResolver.resolveSkill(operation);
-        const xml = await ai.generateMetadata(skill.content, structuredIntent, message, DEFAULT_RATIONALE);
+        const xml = await ai.generateMetadata(skill.content, structuredIntent, message, DEFAULT_RATIONALE, priorContext);
         const mapped = mapArtifact(operation, targetComponent, xml, structuredIntent?.targetField);
         artifacts = [{ ...mapped, skillUsed: skill.skillName || skill.name || operation, skillVersion: skill.skillVersion, content: xml }];
         onEvent({
@@ -255,7 +259,7 @@ export function createOrgEngine({ loader = defaultLoader } = {}) {
         const gateCodeOf = (r) => r.gateCode || 'gate';
         const refusalLines = refused.map((r) => {
           const reason = r.plainLanguageReason || 'Refused';
-          return `• ${gateCodeOf(r)} — ${reason}${r.unblockPath ? ` Unblock: ${r.unblockPath}` : ''}`;
+          return `• ${gateCodeOf(r)}: ${reason}${r.unblockPath ? ` Unblock: ${r.unblockPath}` : ''}`;
         });
         onEvent({
           type: 'status',

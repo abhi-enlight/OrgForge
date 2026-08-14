@@ -19,7 +19,7 @@ interface PackageInstallModalProps {
 /**
  * Shown when the OrgForge Connector package is NOT installed in the selected
  * org. Mirrors the proven AgentForge flow but with the improvements that
- * matter for OrgForge: the install URL comes from the backend (correct for
+ * matter for Forge: the install URL comes from the backend (correct for
  * production / sandbox / scratch), and the re-check action force-bypasses the
  * Redis cache so a freshly-installed package clears the popup immediately.
  */
@@ -109,7 +109,7 @@ export default function PackageInstallModal({
                   <p className="text-xs text-slate-500 leading-relaxed mb-3">
                     Opens the Salesforce package installer. You need{' '}
                     <strong className="font-semibold text-slate-700">System Administrator</strong>{' '}
-                    privileges — choose <em className="not-italic font-medium text-slate-700">Install for All Users</em>.
+                    privileges. Choose <em className="not-italic font-medium text-slate-700">Install for All Users</em>.
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <a
@@ -150,7 +150,7 @@ export default function PackageInstallModal({
                   </h4>
                   <p className="text-xs text-slate-500 leading-relaxed">
                     In <strong className="font-semibold text-slate-700">Setup → External Client App Manager</strong>, open{' '}
-                    <em className="not-italic font-medium text-slate-700">OrgForge by Enlight Lab</em> and set{' '}
+                    <em className="not-italic font-medium text-slate-700">Forge by Enlight Lab</em> and set{' '}
                     <strong className="font-semibold text-slate-700">Permitted Users</strong> to{' '}
                     <em className="not-italic font-medium text-slate-700">All users may self-authorize</em> (or assign the admin-approved permission set).
                   </p>
@@ -174,7 +174,7 @@ export default function PackageInstallModal({
                     leftIcon={<RefreshCw className="w-4 h-4" />}
                     onClick={onRecheck}
                   >
-                    I&apos;ve installed it — Re-check
+                    Re-check after installing
                   </Button>
                 </div>
               </div>
@@ -183,7 +183,7 @@ export default function PackageInstallModal({
             {/* Footer */}
             <div className="px-6 py-3.5 bg-slate-50/60 border-t border-brand-border flex items-center justify-between">
               <span className="text-[10px] font-mono text-slate-400">
-                package {health?.packageVersionId || '…'} · checked {health?.checkedAt ? new Date(health.checkedAt).toLocaleTimeString() : '—'}
+                package {health?.packageVersionId || '…'} · checked {health?.checkedAt ? new Date(health.checkedAt).toLocaleTimeString() : '–'}
               </span>
               <button
                 onClick={onClose}

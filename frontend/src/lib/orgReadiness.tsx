@@ -9,7 +9,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, ApiError, ORG_RECONNECT_REQUIRED } from '@/lib/api';
 import { useActiveOrg } from '@/lib/org-context';
 
 /**
@@ -31,6 +31,11 @@ export interface ReadinessDiag {
     provisioning?: { ok?: boolean; reason?: string };
   };
   checkedAt?: string;
+  /** Salesforce package-installer URL — present when the connector package is
+   *  missing (added by the diagnostics route), so every "setup needed" surface
+   *  can link straight to the install step. */
+  installUrl?: string;
+  packageVersionId?: string;
 }
 
 /**
@@ -42,10 +47,10 @@ export interface ReadinessDiag {
  */
 export function agentsUnavailableHint(diag: ReadinessDiag | null): string {
   const c = diag?.checks;
-  if (c?.package?.installed === false) return 'Connector package missing — install it to build agents';
+  if (c?.package?.installed === false) return 'Connector package missing. Install it to build agents';
   if (c?.settings?.agentforceEnabled === false) return 'Enable Agentforce Agent and Einstein in Setup → Agentforce';
-  if (c?.license?.supported === false) return 'Einstein Agent license needed — see Settings';
-  return 'Agent building needs setup — see Settings';
+  if (c?.license?.supported === false) return 'Einstein Agent license needed. See Settings';
+  return 'Agent building needs setup. See Settings';
 }
 
 interface OrgReadinessContextValue {
@@ -62,6 +67,10 @@ interface OrgReadinessContextValue {
   agentsUnavailable: boolean;
   /** Org-attributed: whether the check for the ACTIVE org failed — retryable. */
   checkFailed: boolean;
+  /** Org-attributed: whether the failed check was an ORG_RECONNECT_REQUIRED
+   *  error — the Salesforce org's stored refresh token was rejected, so the
+   *  fix is a "Reconnect Salesforce" CTA (the app session is still valid). */
+  reconnectRequired: boolean;
 }
 
 const OrgReadinessContext = createContext<OrgReadinessContextValue | null>(null);
@@ -92,6 +101,7 @@ export function OrgReadinessProvider({ children }: { children: React.ReactNode }
   const [diag, setDiag] = useState<ReadinessDiag | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'done'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   // The org whose fetch is currently marked as done/running. Cleared on
   // failure so a retry can re-run without waiting for a remount.
@@ -118,10 +128,13 @@ export function OrgReadinessProvider({ children }: { children: React.ReactNode }
       if (fetchedFor.current !== targetOrgId) return; // superseded by a newer org
       // Unmark this org so retry() can re-run it in-place. The failure is
       // still attributed to the org (orgId set) so consumers can offer retry.
+      // errorCode keeps the backend discriminator (ORG_RECONNECT_REQUIRED)
+      // so consumers can render a Reconnect Salesforce CTA, not a sign-out.
       fetchedFor.current = null;
       setDiag(null);
       setOrgId(targetOrgId);
       setError(err instanceof Error ? err.message : 'Readiness check failed');
+      setErrorCode(err instanceof ApiError ? err.code ?? null : null);
       setStatus('done');
     } finally {
       // Only release the guard when this check still owns it — a newer org's
@@ -137,6 +150,8 @@ export function OrgReadinessProvider({ children }: { children: React.ReactNode }
       const timer = setTimeout(() => {
         setStatus('idle');
         setDiag(null);
+        setError(null);
+        setErrorCode(null);
         setOrgId(null);
       }, 0);
       return () => clearTimeout(timer);
@@ -166,11 +181,14 @@ export function OrgReadinessProvider({ children }: { children: React.ReactNode }
   // re-implement the gates and drift.
   const agentsUnavailable = orgId === org?.id && diag?.capability?.agents === 'attention';
   const checkFailed = orgId === org?.id && error != null;
+  // ORG_RECONNECT_REQUIRED — the org's Salesforce refresh token was rejected;
+  // consumers render a "Reconnect Salesforce" CTA (never a sign-out).
+  const reconnectRequired = orgId === org?.id && errorCode === ORG_RECONNECT_REQUIRED;
 
   // Stable context value — consumers re-render only when actual state changes.
   const value = useMemo(
-    () => ({ diag, status, error, orgId, retry, agentsUnavailable, checkFailed }),
-    [diag, status, error, orgId, retry, agentsUnavailable, checkFailed]
+    () => ({ diag, status, error, orgId, retry, agentsUnavailable, checkFailed, reconnectRequired }),
+    [diag, status, error, orgId, retry, agentsUnavailable, checkFailed, reconnectRequired]
   );
 
   return (

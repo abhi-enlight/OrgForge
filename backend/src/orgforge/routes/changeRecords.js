@@ -29,6 +29,9 @@ router.get('/', async (req, res) => {
     const mappedData = (data || []).map(row => ({
       id: row.id,
       orgId: row.org_id,
+      kind: row.kind || 'org_change',
+      agentName: row.agent_name || null,
+      agentSnapshot: row.agent_snapshot || null,
       intentText: row.intent,
       businessRationale: row.business_rationale,
       approverIdentity: row.approver_identity,

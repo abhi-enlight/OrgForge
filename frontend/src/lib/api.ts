@@ -9,18 +9,28 @@ interface ApiErrorIssue {
  * Error raised by apiFetch for any non-2xx response (or transport failure).
  * Carries the HTTP status plus any structured validation `issues` returned
  * by the backend so callers can render per-field messages.
+ *
+ * `code` is the backend's machine-readable discriminator — most importantly
+ * `ORG_RECONNECT_REQUIRED` (a 401 that means the *Salesforce org* needs
+ * reconnecting, NOT that the user's app session expired). Callers check
+ * `err.code` to render a "Reconnect Salesforce" CTA instead of generic
+ * failure text.
  */
 export class ApiError extends Error {
   status: number;
   issues?: ApiErrorIssue[];
+  code?: string;
 
-  constructor(message: string, status: number, issues?: ApiErrorIssue[]) {
+  constructor(message: string, status: number, issues?: ApiErrorIssue[], code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.issues = issues;
+    this.code = code;
   }
 }
+
+export const ORG_RECONNECT_REQUIRED = 'ORG_RECONNECT_REQUIRED';
 
 const REQUEST_TIMEOUT_MS = 45_000; // generous for AI-powered endpoints
 // Heavy endpoints (intent parse, metadata generation, impact analysis, gate
@@ -35,7 +45,7 @@ export function getErrorMessage(err: unknown, fallback = 'Something went wrong. 
   if (err instanceof Error && err.message) {
     if (err.name === 'AbortError') return 'The request timed out. Please try again.';
     if (/failed to fetch|fetch failed/i.test(err.message)) {
-      return 'Unable to reach the OrgForge server. Check your connection and try again.';
+      return 'Unable to reach the Forge server. Check your connection and try again.';
     }
     return err.message;
   }
@@ -95,12 +105,22 @@ export async function apiFetch<T = unknown>(
     const message =
       err instanceof Error && err.name === 'AbortError'
         ? 'The request timed out. Please try again.'
-        : 'Unable to reach the OrgForge server. Check your connection and try again.';
+        : 'Unable to reach the Forge server. Check your connection and try again.';
     throw new ApiError(message, 0);
   }
 
   if (!res.ok) {
-    if (res.status === 401) {
+    const body = await parseBody<{ error?: unknown; detail?: unknown; issues?: ApiErrorIssue[]; code?: string }>(res);
+    const code = typeof body?.code === 'string' ? body.code : undefined;
+
+    // A 401 with code ORG_RECONNECT_REQUIRED means the *Salesforce org*
+    // connection needs reconnecting (the stored refresh token was rejected) —
+    // the user's app session is still valid, so we must NOT log them out.
+    // Only a session-auth 401 (from the auth middleware, no code) expires the
+    // session and redirects to /login. Previously any 401 here signed the
+    // user out, so a dead Salesforce refresh token looked like a forced
+    // logout on every page load.
+    if (res.status === 401 && code !== ORG_RECONNECT_REQUIRED) {
       await supabase.auth.signOut();
       if (typeof window !== 'undefined') {
         window.location.href = '/login';
@@ -108,7 +128,6 @@ export async function apiFetch<T = unknown>(
       throw new ApiError('Session expired. Please sign in again.', 401);
     }
 
-    const body = await parseBody<{ error?: unknown; detail?: unknown; issues?: ApiErrorIssue[] }>(res);
     const rawError = typeof body?.error === 'string' ? body.error : undefined;
     const detail = typeof body?.detail === 'string' && body.detail ? body.detail : undefined;
     const issues = body?.issues;
@@ -127,7 +146,7 @@ export async function apiFetch<T = unknown>(
       message = `${message} ${detail}`;
     }
 
-    throw new ApiError(message, res.status, issues);
+    throw new ApiError(message, res.status, issues, code);
   }
 
   return (await parseBody<T>(res)) as T;

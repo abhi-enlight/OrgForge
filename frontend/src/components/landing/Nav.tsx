@@ -6,8 +6,9 @@ import { Menu, X } from 'lucide-react';
 import { ForgeLogo } from '@/components/brand/ForgeLogo';
 
 const LINKS = [
-  { href: '#capabilities', label: 'Capabilities' },
+  { href: '#problem', label: 'The problem' },
   { href: '#how-it-works', label: 'How it works' },
+  { href: '#audience', label: "Who it's for" },
   { href: '#security', label: 'Security' },
 ] as const;
 

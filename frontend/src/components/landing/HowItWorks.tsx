@@ -17,7 +17,7 @@ const STAGES = [
   {
     icon: PlugZap,
     title: 'Connect your org',
-    body: 'One OAuth login to Salesforce. Pick Production, Sandbox, or Scratch and OrgForge indexes your org context.',
+    body: 'One OAuth login to Salesforce. Pick Production, Sandbox, or Scratch and Forge indexes your org context.',
   },
   {
     icon: MessageSquareText,
@@ -46,7 +46,7 @@ export function HowItWorks() {
   const draw = useTransform(scrollYProgress, [0, 1], [0, 1]);
 
   return (
-    <section id="how-it-works" className="scroll-mt-20 py-16 lg:py-20">
+    <section id="how-it-works" className="scroll-mt-20 bg-brand-surface/60 py-16 lg:py-20">
       <div className="relative mx-auto max-w-6xl px-5 sm:px-8">
         <BlueprintCorners />
         {/* faint drafting plane beneath the rail (Pass 42): the pipeline sits

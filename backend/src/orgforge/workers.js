@@ -14,13 +14,14 @@
 import indexOrgWorker from './jobs/indexOrgJob.js';
 import dependencyGraphWorker from './jobs/dependencyGraphJob.js';
 import selfImprovementWorker from './jobs/selfImprovementJob.js';
+import sessionCleanupWorker from './jobs/sessionCleanupJob.js';
 import pollDeploymentWorker from './jobs/pollDeploymentJob.js';
 
 // Worker instances emit their own 'error' events (distinct from the shared
 // Redis connection error swallow in queue.js). Guarding here keeps a worker
 // fault (e.g. connection loss) from becoming an unhandled 'error' crash while
 // BullMQ's internal retry keeps the worker alive.
-for (const worker of [indexOrgWorker, dependencyGraphWorker, selfImprovementWorker, pollDeploymentWorker]) {
+for (const worker of [indexOrgWorker, dependencyGraphWorker, selfImprovementWorker, sessionCleanupWorker, pollDeploymentWorker]) {
   worker.on?.('error', () => {});
 }
 
@@ -28,5 +29,6 @@ export const orgforgeWorkers = [
   indexOrgWorker,
   dependencyGraphWorker,
   selfImprovementWorker,
+  sessionCleanupWorker,
   pollDeploymentWorker,
 ];

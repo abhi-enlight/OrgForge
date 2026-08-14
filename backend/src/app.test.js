@@ -7,11 +7,10 @@ import express from 'express';
 
 beforeEach(() => {
   process.env.NODE_ENV = 'test';
-  process.env.SESSION_SECRET = 'test-session-secret';
 });
 
 test('app boots with flags off: health 200 and JSON 404', async () => {
-  const app = await createApp({ enableOrgForge: false, enableAgentforge: false });
+  const app = await createApp({ enableOrgForge: false });
   const server = app.listen(0);
 
   try {

@@ -12,10 +12,10 @@ interface SidebarProps {
 }
 
 /**
- * Global sidebar (plan §6.1) — OrgForge Sidebar slimmed to 6 items. Org
+ * Global sidebar (plan §6.1) — Forge Sidebar slimmed to 6 items. Org
  * connections live inside Settings and the org pill, not a top-level page.
  * Copilot is the primary destination for work; the 10-stage operator
- * workspace (PRD FR-5, ported from OrgForge) lives at /workspace.
+ * workspace (PRD FR-5, ported from Forge) lives at /workspace.
  */
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
@@ -104,7 +104,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
         <div className="px-3 pt-4 border-t border-brand-border">
           <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-slate-400">
-            ORG FORGE v1
+            FORGE v1
           </p>
         </div>
       </aside>

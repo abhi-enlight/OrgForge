@@ -1,6 +1,6 @@
 import { Worker } from 'bullmq';
 import { createRedisConnection } from './queue.js';
-import { supabaseAdmin } from '../services/supabaseClient.js';
+import { supabaseAdmin } from '../../lib/supabaseClients.js';
 import { aiOrchestrator } from '../services/aiOrchestrator.js';
 
 // BullMQ workers require their own connection instance when using blocking commands

@@ -1,48 +1,41 @@
 # Forge schema migrations (Phase 3 — planned)
 
-These migrations consolidate both engines onto one `forge` schema inside the
+These migrations consolidate both engines onto one `orgforge` schema inside the
 **same Supabase project** (plan §9). They are **additive**: nothing is dropped
-until Phase-5 sign-off, and legacy `public` / `orgforge` tables stay untouched
-for the legacy apps.
+until Phase-5 sign-off, and legacy `public` tables stay untouched for the
+legacy apps.
 
-> ⚠️ **org_connections stays in the DEFAULT (public) schema.** The OAuth
-> callback, the re-link flow, and every OrgForge router/job read/write
-> `org_connections` via clients with **no schema override** → `public`. The
-> unified copilot (chat/stream, agents, diagnostics) resolves credentials
-> through the same default-schema client so both halves share ONE store.
-> `forge.org_connections` (created here by 008) is therefore **vestigial** —
-> nothing writes to it. If you apply 008, the table is harmless; the
-> authoritative store is `public.org_connections`.
->
-> ⚠️ **Re-link column caveat.** `packages/org-connections/src/reLink.js`
-> upserts `capabilities`, `legacy_agentforge_user_id`, and `disconnected_at`
-> into `org_connections` (public) via `req.supabaseClient`. Those columns are
-> guaranteed on `forge.org_connections` (008) but may not exist on the legacy
-> public table — if absent, link-legacy best-effort fails to `linked: 0`
-> (never a blocker; the one-time OAuth re-connect is the guaranteed path, D4).
-> Verify/add the columns on `public.org_connections` when applying 008 if you
-> want re-link to re-parent orgs.
+> ✅ **Strict Orgforge Schema Isolation.** All database operations in this app
+> (OAuth callback, re-link flow, OrgForge routes/jobs, and the unified copilot)
+> read and write strictly to the `orgforge` schema. The `public` schema is
+> untouched to protect legacy data. `orgforge.org_connections` is the
+> authoritative store.
 
 > ⚠️ The OrgForge project's migrations live in
 > `../OrgForge/supabase/migrations/` (001–007) and were applied to the shared
 > project already. Forge migrations are numbered from **008** onward so they
 > apply cleanly after the OrgForge set.
 
-## Planned order (plan §9.4)
+## Migration order
 
 | # | Migration | Contents |
 |---|---|---|
-| 008 | `forge_schema.sql` | `forge` schema + `org_connections` (adds `capabilities`, `legacy_agentforge_user_id`, `disconnected_at`), `agents` inventory cache, `chat_sessions`, `routing_log`, `diagnostics` |
-| 009 | `forge_views.sql` | Views mapping legacy names so legacy queries/tests keep working (`forge.org_connections` ← `public`/`orgforge.org_connections`) |
+| 008 | `forge_schema.sql` | `orgforge` schema + `org_connections` (adds `capabilities`, `legacy_agentforge_user_id`, `disconnected_at`), `agents` inventory cache, `chat_sessions`, `routing_log`, `diagnostics` (+ RLS on every table). **Idempotent:** includes a compat block that renames an already-applied `forge` schema to `orgforge` in place. |
 | 010 | `forge_legacy_rpc.sql` | RPCs for the re-link flow (§8.4): `get_connections_by_agentforge_user`, `delete_salesforce_connection_by_user` (used by `packages/org-connections/src/reLink.js`) |
-| 011 | `forge_rls.sql` | Mirror OrgForge's proven RLS: `auth.uid() = user_id` on every table |
+| 011 | `github_connections.sql` | `orgforge.github_connections` — the GitHub audit App's connection rows (one per user); a missing table reads as "disconnected", never a 500 |
+| 012 | `forge_context_memory.sql` | **Durable conversation memory** (context-memory pass): adds `transcript JSONB` (bounded text-only turns) + `context_summary TEXT` (flash-compressed head) to `orgforge.chat_sessions`; idempotent `ADD COLUMN IF NOT EXISTS` |
+| 013 | `forge_data_tables.sql` | Additional missing data tables in `orgforge` schema (`change_records`, `org_indexes`, `ai_lessons`, `deployments`, `change_sets`) with RLS applied to enforce full isolation from `public`. |
+| 014 | `change_records_agent_kind.sql` | **EC-37** — agent deploys get the same signed-record trail as org changes: `kind TEXT NOT NULL DEFAULT 'org_change'` (`'agent_deploy'` for agent builds), `agent_name TEXT`, `agent_snapshot JSONB` (pre-deploy YAML snapshot). Additive `ADD COLUMN IF NOT EXISTS`; existing rows keep `kind = 'org_change'`. |
 
-## Draft schema — `forge.org_connections`
+> Planned/not yet written: 009 (legacy-name compat views) and the OrgForge-RLS
+> mirror — RLS already ships inside 008; the views were deferred.
+
+## Draft schema — `orgforge.org_connections`
 
 ```sql
-CREATE SCHEMA IF NOT EXISTS forge;
+CREATE SCHEMA IF NOT EXISTS orgforge;
 
-CREATE TABLE forge.org_connections (
+CREATE TABLE orgforge.org_connections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,                       -- auth.users.id
     org_id VARCHAR(18) NOT NULL,
@@ -62,5 +55,15 @@ CREATE TABLE forge.org_connections (
 
 ## Status
 
-Not yet applied. The `packages/org-connections` re-link tests mock the RPCs in
-010; apply 010 before enabling `POST /api/v1/auth/link-legacy` (Phase 2).
+Applied in order 008 → 010 → 011 → 012 → 013 (idempotent; 008's compat block
+handles environments where it previously landed as `forge`). RLS ships inside
+008 + 013. **All five migrations are applied to the live hosted project
+(Passes 43 + 51)** with the `orgforge` schema exposed in PostgREST
+(`pgrst.db_schemas`) and GRANTs for anon/authenticated/service_role — 013
+carries its own GRANT block (USAGE + ALL TABLES + ALL SEQUENCES) because
+schema-level grants do NOT cover tables created afterward (the five data
+tables shipped grant-less once and got 42501 for service_role).
+`orgforge.chat_sessions` rows are garbage-collected by the nightly
+`session-cleanup` job (03:05, retention `CHAT_SESSIONS_RETENTION_DAYS`, default
+7 days) — see `backend/src/lib/sessionCleanup.js` and
+`backend/src/orgforge/jobs/sessionCleanupJob.js`.

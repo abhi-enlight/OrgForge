@@ -8,7 +8,7 @@ export function Footer() {
         <ForgeLogo href="/" size="sm" />
 
         <p className="text-xs text-text-muted">
-          OrgForge by Enlight Lab. A conversational copilot for Salesforce.
+          Forge by Enlight Lab. A conversational copilot for Salesforce.
         </p>
 
         <div className="flex items-center gap-6">

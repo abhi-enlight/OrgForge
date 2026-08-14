@@ -63,7 +63,7 @@ export function createHealthRouter({ forgeDbFactory = () => forgeDbSingleton } =
       if (missingTables.length === 0) {
         return res.json({
           status: 'healthy',
-          schema: 'forge',
+          schema: 'orgforge',
           missingTables: [],
           timestamp: new Date().toISOString(),
         });
@@ -71,13 +71,13 @@ export function createHealthRouter({ forgeDbFactory = () => forgeDbSingleton } =
 
       return res.status(503).json({
         status: 'unhealthy',
-        schema: 'forge',
+        schema: 'orgforge',
         missingTables,
         // migrationPending is only claimed when the schema itself is absent
         // (PGRST106) — a partial/missing table in an applied schema is reported
         // as a plain missingTables list, not a migration-state assertion.
         ...(sawMissingSchema
-          ? { migrationPending: true, note: 'forge schema absent — apply supabase/migrations/008_forge_schema.sql (S-2)' }
+          ? { migrationPending: true, note: 'forge schema absent. Apply supabase/migrations/008_forge_schema.sql (S-2)' }
           : {}),
         timestamp: new Date().toISOString(),
       });

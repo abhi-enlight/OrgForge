@@ -164,6 +164,36 @@ test('missing HMAC_SECRET keeps the stream alive with an unsigned-record warning
   assert.equal(events.some((e) => e.card === 'deploy' && e.payload.success), true);
 });
 
+test('priorContext from the session spine reaches intent parsing + metadata generation', async () => {
+  const seen = { parse: [], gen: [] };
+  const fakes = fakeServices();
+  fakes['services/aiOrchestrator.js'] = {
+    aiOrchestrator: {
+      parseIntent: async (...args) => {
+        seen.parse.push(args[3]);
+        return { operation: 'CREATE_VALIDATION_RULE', targetComponent: 'Opportunity', ambiguities: [] };
+      },
+      generateMetadata: async (...args) => {
+        seen.gen.push(args[4]);
+        return '<?xml version="1.0"?><ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata"><fullName>Opportunity_Rule</fullName><errorConditionFormula>true</errorConditionFormula></ValidationRule>';
+      },
+    },
+  };
+  const engine = makeEngine(fakes);
+  const { events, onEvent } = collect();
+  await engine.runOrgChange({
+    message: 'Add a validation rule to Opportunity',
+    creds: CREDS,
+    userId: 'u1',
+    orgId: '00D1',
+    priorContext: 'Session summary: earlier turn in this session',
+    onEvent,
+  });
+  assert.deepEqual(seen.parse, ['Session summary: earlier turn in this session'], 'parseIntent received priorContext');
+  assert.deepEqual(seen.gen, ['Session summary: earlier turn in this session'], 'generateMetadata received priorContext');
+  assert.equal(events.some((e) => e.card === 'deploy' && e.payload.success), true, 'pipeline still runs');
+});
+
 test('production instance URL + no production mode → REF-07 refused via the real gate engine', async () => {
   // Use the REAL refusalGateEngine through the fake loader to prove the
   // org-type/production-mode guard wiring is correct.

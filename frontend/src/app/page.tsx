@@ -1,17 +1,19 @@
 import type { Metadata } from 'next';
 import { LandingNav } from '@/components/landing/Nav';
 import { Hero } from '@/components/landing/Hero';
+import { Problem } from '@/components/landing/Problem';
 import { Capabilities } from '@/components/landing/Capabilities';
 import { HowItWorks } from '@/components/landing/HowItWorks';
+import { Audience } from '@/components/landing/Audience';
 import { FeatureBento } from '@/components/landing/FeatureBento';
 import { Security } from '@/components/landing/Security';
 import { CtaSection } from '@/components/landing/CtaSection';
 import { Footer } from '@/components/landing/Footer';
 
 export const metadata: Metadata = {
-  title: 'OrgForge: One copilot for your whole Salesforce org',
+  title: 'Forge: One copilot for your whole Salesforce org',
   description:
-    'Build and deploy Salesforce Agentforce agents in natural language, and ship governed org changes with impact analysis and refusal gates. One chat, two skills, fully signed.',
+    'For Salesforce admins and release managers: build and deploy Agentforce agents in natural language, and make governed org changes behind refusal gates with a signed audit trail.',
 };
 
 export default function LandingPage() {
@@ -54,8 +56,10 @@ export default function LandingPage() {
       <div className="relative z-10">
         <LandingNav />
         <Hero />
+        <Problem />
         <Capabilities />
         <HowItWorks />
+        <Audience />
         <FeatureBento />
         <Security />
         <CtaSection />

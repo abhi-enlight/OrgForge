@@ -21,11 +21,15 @@ function makeFakeSupabase(legacyRows) {
   const upserts = [];
 
   return {
-    rpc: async (fn, params) => {
-      rpcCalls.push({ fn, params });
-      if (fn === 'get_connections_by_agentforge_user') return { data: legacyRows, error: null };
-      return { data: null, error: null };
-    },
+    // reLink reads the legacy tables via an explicit `.schema('public')`
+    // (Pass 51 strict-orgforge-isolation) — mirror that here.
+    schema: (name) => ({
+      rpc: async (fn, params) => {
+        rpcCalls.push({ schema: name, fn, params });
+        if (fn === 'get_connections_by_agentforge_user') return { data: legacyRows, error: null };
+        return { data: null, error: null };
+      },
+    }),
     from: () => ({
       upsert: async (row, opts) => {
         upserts.push({ row, opts });
@@ -84,7 +88,9 @@ test('idempotent: legacy rows already moved are simply not re-created', async ()
 
 test('db error on legacy lookup is not a hard failure (EC-38)', async () => {
   const supabase = {
-    rpc: async () => ({ data: null, error: { message: 'RPC not found' } }),
+    schema: () => ({
+      rpc: async () => ({ data: null, error: { message: 'RPC not found' } }),
+    }),
     from: () => ({ upsert: async () => ({ error: null }) }),
   };
 

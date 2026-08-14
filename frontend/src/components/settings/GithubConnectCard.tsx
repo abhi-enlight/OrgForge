@@ -208,7 +208,7 @@ export default function GithubConnectCard({
                 </span>
               </p>
               <p className={cn('text-xs text-slate-500 mt-0.5', compact && 'text-[11px]')}>
-                {status.connectedAt ? `Connected ${timeAgo(status.connectedAt)}` : 'Connected'} — every signed change
+                {status.connectedAt ? `Connected ${timeAgo(status.connectedAt)}` : 'Connected'}. Every signed change
                 record is pushed here automatically.
               </p>
             </div>
@@ -247,7 +247,7 @@ export default function GithubConnectCard({
             Install the OrgForge Audit Logger
           </button>
           <p className={cn('text-xs text-slate-400', compact && 'text-[11px]')}>
-            Opens GitHub in a new tab — after installing, choose the repo on the Settings page that opens, then come
+            Opens GitHub in a new tab. After installing, choose the repo on the Settings page that opens, then come
             back here.
           </p>
 
@@ -281,7 +281,7 @@ export default function GithubConnectCard({
                 </>
               ) : (
                 <p className="text-sm text-slate-500">
-                  No repositories found for this installation — grant the app access to a repository on GitHub and try
+                  No repositories found for this installation. Grant the app access to a repository on GitHub and try
                   again.
                 </p>
               )}

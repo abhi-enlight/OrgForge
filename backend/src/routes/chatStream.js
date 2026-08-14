@@ -13,7 +13,7 @@ import {
 import { getOrgCredentials } from '@forge/org-connections';
 import { setupSse } from '../lib/sseEmitter.js';
 import { isMissingTableError } from '../lib/isMissingTable.js';
-import { appendChatSegment } from '../lib/chatSessions.js';
+import { appendChatSegment, getChatSession, buildSessionDigest } from '../lib/chatSessions.js';
 import { isAllowedFile, extractFileText, buildPromptWithAttachment, buildImageParts as buildImagePartsDefault, MAX_FILE_BYTES } from '../lib/fileAttachments.js';
 import { agentEngine } from '../engines/agentEngine.js';
 import { orgEngine } from '../engines/orgEngine.js';
@@ -49,9 +49,9 @@ const CLARIFY_MESSAGE =
  */
 function agentsGateReason(diag) {
   const c = diag?.checks || {};
-  if (c.package?.installed === false) return 'Connector package missing — install it to build agents';
+  if (c.package?.installed === false) return 'Connector package missing. Install it to build agents';
   if (c.settings?.agentforceEnabled === false) return 'Enable Agentforce Agent and Einstein in Setup → Agentforce';
-  if (c.license?.supported === false) return 'Einstein Agent license needed — see Settings';
+  if (c.license?.supported === false) return 'Einstein Agent license needed. See Settings';
   return 'Agent building needs setup';
 }
 
@@ -126,6 +126,9 @@ function hashPrompt(message) {
  *   (injectable for tests; real one parses multipart bodies into req.file)
  * @param {(file: object) => Promise<{kind: 'text'|'image'|'none', text?: string}>} [opts.extractFile]
  * @param {(userPrompt: string, file: object, text: string) => string} [opts.buildPrompt]
+ * @param {(opts: {db: object, userId: string, orgId: string, sessionId: string}) => Promise<object|null>} [opts.getSession]
+ *   - reads the session spine (durable context memory). Best-effort: any
+ *   failure degrades to "no memory", never breaks the chat.
  */
 export function createChatStreamRouter({
   authMiddleware = createAuthMiddleware(),
@@ -144,6 +147,7 @@ export function createChatStreamRouter({
   describeImage = describeImageDefault,
   getDiagnostics = getDiagnosticsDefault,
   preFlight = preFlightDefault,
+  getSession = getChatSession,
 } = {}) {
   const router = Router();
   const requireAuth = authMiddleware;
@@ -178,6 +182,10 @@ export function createChatStreamRouter({
         capability: seg.capability,
         engineRef: seg.engineRef,
         summary: seg.summary,
+        // Durable context memory: the agent segment carries this turn's
+        // bounded conversation snapshot (manager getContextSnapshot).
+        transcript: seg.transcript,
+        contextSummary: seg.contextSummary,
       });
       if (res?.missing) {
         console.warn('[chat/stream] chat_sessions skipped (migration 008 not applied?): table missing');
@@ -310,7 +318,14 @@ export function createChatStreamRouter({
       } catch (err) {
         if (err.status === 404) return res.status(404).json({ error: 'Org connection not found' });
         if (err.status === 401) {
-          return res.status(401).json({ error: 'Reconnect this org — Salesforce access could not be refreshed' });
+          // ORG_RECONNECT_REQUIRED discriminates this 401 from a session-auth
+          // 401: the user's app session is fine — only the Salesforce org
+          // needs reconnecting (EC-10). The frontend checks this code before
+          // deciding to sign the user out.
+          return res.status(401).json({
+            error: 'Reconnect this org. Salesforce access could not be refreshed',
+            code: 'ORG_RECONNECT_REQUIRED',
+          });
         }
         throw err;
       }
@@ -360,7 +375,7 @@ export function createChatStreamRouter({
               reason: agentsGateReason(diag),
               overrideSource: 'readiness_gate',
             };
-            agentsGateNotice = `Skipping the agent half — ${agentsGateReason(diag)}`;
+            agentsGateNotice = `Skipping the agent half. ${agentsGateReason(diag)}`;
           } else {
             // Audit the refused request (the message WAS agent intent), then
             // refuse — every blocked send leaves a routing_log row.
@@ -380,6 +395,38 @@ export function createChatStreamRouter({
           error: 'A request is already running in this conversation. Please wait for it to complete.',
         });
       }
+
+      // ── 3.75 Durable context memory ──────────────────────────────────────
+      // Read this session's spine ONCE per request: it feeds (a) the agent
+      // engine's cold-start resume (bounded transcript + summary) and (b) the
+      // org engine's prior-context digest. Best-effort by design — a DB
+      // failure or a missing table (migration 008 pending) degrades to "no
+      // memory" and never breaks the chat. The read is triple-filtered on
+      // (user_id, org_id, session_id), so it can never surface another
+      // session's or another user's conversation.
+      let spine = null;
+      try {
+        // Same 'default' normalization as persistSegments so the memory read
+        // always targets the same row the segments are written to.
+        spine = await getSession({ db, userId: req.user.id, orgId, sessionId: sessionId || 'default' });
+      } catch (spineErr) {
+        console.warn('[chat/stream] session spine read failed — continuing without memory:', spineErr.message);
+      }
+      let spineTurns = [];
+      if (spine?.transcript) {
+        if (Array.isArray(spine.transcript)) spineTurns = spine.transcript;
+        else if (typeof spine.transcript === 'string') {
+          try {
+            const parsed = JSON.parse(spine.transcript);
+            if (Array.isArray(parsed)) spineTurns = parsed;
+          } catch { /* non-JSON legacy value — no turns */ }
+        }
+      }
+      const resumeCtx = {
+        turns: spineTurns,
+        summary: spine?.context_summary || null,
+      };
+      const sessionDigest = buildSessionDigest(spine);
 
       // ── 4. SSE up ───────────────────────────────────────────────────────
       sse = emit(req, res);
@@ -412,7 +459,7 @@ export function createChatStreamRouter({
       }
 
       if (decision.capability === 'clarify') {
-        send({ type: 'status', content: 'Routing paused — clarification needed.' });
+        send({ type: 'status', content: 'Routing paused. Clarification needed.' });
         send({ type: 'message', content: CLARIFY_MESSAGE, summary: 'Clarification needed' });
         await persistSegments([{ capability: 'clarify', engineRef: 'router', summary: 'Clarification requested' }], req.user.id, orgId, sessionId);
         return sse.done();
@@ -452,6 +499,9 @@ export function createChatStreamRouter({
             accessToken: creds.accessToken,
             instanceUrl: creds.instanceUrl,
             sessionKey,
+            // Durable memory resume (applied only on a cold start — the
+            // engine prefers its own Redis snapshot when one exists).
+            resume: resumeCtx,
             onEvent: (ev) => send(ev, 'agent'),
           });
         } catch (err) {
@@ -468,12 +518,27 @@ export function createChatStreamRouter({
           latencyMs: Date.now() - stepStartedAt,
         });
         // Agentforge renderer marker (legacy contract, preserved verbatim).
+        // The agent segment carries this turn's durable context snapshot so
+        // the spine reflects the conversation after every agent turn.
+        const agentCtx = aiResponse?.context;
         if (aiResponse?.content?.includes('[SHOW_BUILD_WIDGET]')) {
           send({ type: 'build_widget', content: 'Select Agent' }, 'agent');
-          segments.push({ capability: 'agent', engineRef: 'agentforce', summary: 'Agent build started — widget awaiting selection' });
+          segments.push({
+            capability: 'agent',
+            engineRef: 'agentforce',
+            summary: 'Agent build started. Widget awaiting selection',
+            transcript: agentCtx?.turns,
+            contextSummary: agentCtx?.summary,
+          });
         } else if (aiResponse?.content) {
           send({ type: 'message', content: aiResponse.content }, 'agent');
-          segments.push({ capability: 'agent', engineRef: 'agentforce', summary: aiResponse.content });
+          segments.push({
+            capability: 'agent',
+            engineRef: 'agentforce',
+            summary: aiResponse.content,
+            transcript: agentCtx?.turns,
+            contextSummary: agentCtx?.summary,
+          });
         }
       };
 
@@ -507,7 +572,7 @@ export function createChatStreamRouter({
             send(
               {
                 type: 'deploy_warning',
-                content: 'Could not analyze the attached image — proceeding from the text request only.',
+                content: 'Could not analyze the attached image. Proceeding from the text request only.',
                 summary: 'Image not analyzed',
               },
               'org_change'
@@ -521,6 +586,10 @@ export function createChatStreamRouter({
             creds,
             userId: req.user.id,
             orgId,
+            // Cross-engine memory: a compact digest of what already happened
+            // in THIS session (recent capability segments + context summary),
+            // so "now do the same for Account" has the earlier turns in view.
+            priorContext: sessionDigest || undefined,
             onEvent: (ev) => {
               if (ev.content && ['message', 'deploy_success', 'deploy_warning', 'record'].includes(ev.type)) {
                 // Prefer the event's one-line summary (e.g. "Blocked by 2
@@ -561,7 +630,7 @@ export function createChatStreamRouter({
         // step (per-segment progress cards split on the capability tag).
         await agentStep();
         send(
-          { type: 'status', content: 'Agent step done — applying the org change next.' },
+          { type: 'status', content: 'Agent step done. Applying the org change next.' },
           'org_change'
         );
         await orgStep();

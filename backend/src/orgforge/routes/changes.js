@@ -23,7 +23,7 @@ function isMissingTableError(err) {
 const SCHEMA_NOT_INITIALIZED =
   'Database schema is not initialized. Apply the OrgForge migrations ' +
   '(supabase/migrations/003_public_schema.sql, then 004 and 005) in the ' +
-  'Supabase SQL editor — or add SUPABASE_ACCESS_TOKEN (or DATABASE_URL) to ' +
+  'Supabase SQL editor, or add SUPABASE_ACCESS_TOKEN (or DATABASE_URL) to ' +
   'backend/.env so the schema can be applied automatically.';
 
 const intentSchema = z.object({

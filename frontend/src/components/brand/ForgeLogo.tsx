@@ -21,9 +21,9 @@ interface ForgeLogoProps {
 }
 
 /**
- * OrgForge brand lockup: the Enlight Lab logo (`public/enlight-logo.png`,
+ * Forge brand lockup: the Enlight Lab logo (`public/enlight-logo.png`,
  * 615×96 — DESIGN.md §5: rendered with `object-contain`, gentle `scale-[1.02]`
- * on hover) beside the ORG FORGE wordmark. Inline SVG stays crisp at any size;
+ * on hover) beside the FORGE wordmark. Inline SVG stays crisp at any size;
  * the whole lockup is a link.
  */
 export function ForgeLogo({
@@ -32,7 +32,7 @@ export function ForgeLogo({
   className,
   wordmarkClassName,
   showWordmark = true,
-  ariaLabel = 'OrgForge, by Enlight Lab',
+  ariaLabel = 'Forge, by Enlight Lab',
 }: ForgeLogoProps) {
   const s = SIZES[size];
 
@@ -56,7 +56,7 @@ export function ForgeLogo({
             wordmarkClassName
           )}
         >
-          ORG FORGE
+          FORGE
         </span>
       )}
     </Link>

@@ -162,7 +162,7 @@ export default function AmbiguityCard({
                 {isRephrase && <Check className="w-3 h-3 stroke-[3]" />}
               </span>
               <RotateCcw className="w-4 h-4 text-amber-600 shrink-0" />
-              <span className="text-sm font-bold text-brand-dark">None of these — rephrase my intent</span>
+              <span className="text-sm font-bold text-brand-dark">None of these. Rephrase my intent</span>
             </div>
             <p className="text-xs text-slate-600 pl-[26px] leading-relaxed mt-1">
               Return to Stage 2 with your original prompt preserved and refine the wording so the AI
@@ -200,7 +200,7 @@ export default function AmbiguityCard({
                 <span className="text-sm font-bold text-brand-dark">My intent is something else</span>
               </div>
               <p className="text-xs text-slate-600 pl-[26px] leading-relaxed mt-1">
-                Describe exactly what you want OrgForge to change, and the AI will generate metadata
+                Describe exactly what you want Forge to change, and the AI will generate metadata
                 from your resolution instead.
               </p>
             </button>

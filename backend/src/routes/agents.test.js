@@ -258,6 +258,7 @@ test('credential refresh failure → 401 reconnect message', async () => {
   await settle();
   assert.equal(res.statusCode, 401);
   assert.ok(res.body.error.includes('Reconnect this org'));
+  assert.equal(res.body.code, 'ORG_RECONNECT_REQUIRED', 'discriminator: not a session-auth 401');
 });
 
 test('unsafe instance URL → 400 (SSRF guard)', async () => {

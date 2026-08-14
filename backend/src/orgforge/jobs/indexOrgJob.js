@@ -1,8 +1,8 @@
 import { Worker } from 'bullmq';
 import { createRedisConnection, dependencyGraphQueue } from './queue.js';
 import { salesforceClient } from '../services/salesforceClient.js';
-import { supabaseAdmin } from '../services/supabaseClient.js';
-import { getOrgCredentials } from '../services/orgCredentials.js';
+import { supabaseAdmin } from '../../lib/supabaseClients.js';
+import { getOrgCredentials } from '@forge/org-connections';
 
 // BullMQ workers require their own connection instance when using blocking commands
 const connection = createRedisConnection();
@@ -14,8 +14,22 @@ const worker = new Worker('orgforge-index-org', async job => {
   try {
     connection.publish(`orgforge:index-progress:${orgId}`, JSON.stringify({ progress: 10, status: 'fetching_credentials' }));
 
-    // 1. Fetch credentials (with transparent token refresh)
-    const { accessToken, instanceUrl } = await getOrgCredentials(supabaseAdmin, userId, orgId);
+    // 1. Fetch credentials (with transparent token refresh). EC-10: if the
+    //    stored refresh token is dead, flag the org disconnected so the UI
+    //    shows a "Reconnect" CTA — the job itself fails loudly and retries.
+    const { accessToken, instanceUrl } = await getOrgCredentials(supabaseAdmin, userId, orgId, {
+      onRefreshFailure: async () => {
+        try {
+          await supabaseAdmin
+            .from('org_connections')
+            .update({ disconnected_at: new Date().toISOString() })
+            .eq('org_id', orgId)
+            .eq('user_id', userId);
+        } catch (hookErr) {
+          console.warn('[indexOrgJob] mark-disconnected hook failed:', hookErr.message);
+        }
+      }
+    });
 
     connection.publish(`orgforge:index-progress:${orgId}`, JSON.stringify({ progress: 30, status: 'fetching_metadata' }));
 

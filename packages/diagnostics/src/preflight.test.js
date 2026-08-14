@@ -92,31 +92,135 @@ test('package: query failure returns false (never throws)', async () => {
   assert.equal(await checkPackageInstalled(TOKEN, INSTANCE, '04tfj000000NNITAA4', api), false);
 });
 
-// ── checkAgentforceSettings (Agentforce Agent + Einstein toggles) ─────────
-// Both toggles are Metadata-API-only; the check proxies via BotDefinition.
-test('settings: enabled when the BotDefinition Tooling object is queryable', async () => {
+test('package: ECA fallback reports installed when the package row is absent but the ECA exists', async () => {
+  // Unmanaged install / pinned-id mismatch: InstalledSubscriberPackage has no
+  // row, but the External Client Application (the OAuth client Forge uses) is
+  // present → the connector IS set up → installed. ExternalClientApplication
+  // is a STANDARD REST object, so the fallback queries api.query (a Tooling
+  // query returns "sObject type not supported" in real orgs).
   const api = createStubSfApi({
-    toolingQuery: async () => [{ Id: '0B7x', Type: 'Agent' }],
+    toolingQuery: async () => [], // no managed-package row
+    query: async (t, u, soql) =>
+      soql.includes('ExternalClientApplication') ? [{ Id: '0J4eca' }] : [],
+  });
+  assert.equal(await checkPackageInstalled(TOKEN, INSTANCE, '04tfj000000NNITAA4', api), true);
+});
+
+test('package: ECA fallback keeps missing when neither package row nor ECA exists', async () => {
+  const api = createStubSfApi({ toolingQuery: async () => [], query: async () => [] });
+  assert.equal(await checkPackageInstalled(TOKEN, INSTANCE, '04tfj000000NNITAA4', api), false);
+});
+
+test('package: ECA query failure degrades to the package verdict (non-fatal)', async () => {
+  const api = createStubSfApi({
+    toolingQuery: async () => [], // package row absent
+    query: async (t, u, soql) => {
+      if (soql.includes('ExternalClientApplication')) {
+        throw new Error('INSUFFICIENT_ACCESS');
+      }
+      return [];
+    },
+  });
+  assert.equal(await checkPackageInstalled(TOKEN, INSTANCE, '04tfj000000NNITAA4', api), false);
+});
+
+test('package: ECA fallback applies in the full preflight run (attention → ok)', async () => {
+  // The exact user scenario: the package row is missing (unmanaged install or
+  // id mismatch) but the ECA exists — the preflight must now report the
+  // connector installed instead of leaving the org stuck on "setup needed".
+  const api = createStubSfApi({
+    query: async (t, u, soql) => {
+      if (soql.includes('ExternalClientApplication')) return [{ Id: '0J4eca' }]; // ECA present (standard REST)
+      if (soql.includes('UserLicense')) return [{ TotalLicenses: 10, UsedLicenses: 2 }];
+      if (soql.includes('PermissionSetGroup')) return [{ Id: '0PGg', MasterLabel: 'Agentforce' }];
+      if (soql.includes('PermissionSet WHERE Label')) return [{ Id: '0psA', Name: 'AgentforceServiceAgentBase', Label: 'A' }];
+      if (soql.includes('PermissionSet WHERE Name IN')) return [];
+      if (soql.includes('Profile WHERE Name')) return []; // no Einstein Agent User profile → settings gated
+      if (soql.includes('FROM User')) return [{ Id: '005u', Username: 'agent@x.com', IsActive: true }];
+      if (soql.includes('FROM Organization')) return [{ Id: '00D', IsSandbox: false }];
+      return [];
+    },
+    toolingQuery: async () => [], // no managed-package row (unmanaged install)
+    post: async () => ({ id: '005new' }),
+    userinfo: async () => ({ user_id: '005admin' }),
+  });
+  const res = await runPreFlightCheck(TOKEN, INSTANCE, { api, packageVersionId: '04tfj000000NNITAA4' });
+  assert.equal(res.checks.package.installed, true, 'ECA fallback flips the package verdict');
+  assert.equal(res.capability.org_change, 'ok', 'org_change no longer blocked by the false negative');
+  assert.equal(res.state, 'attention', 'agents still gated by the disabled Agentforce settings');
+});
+
+// ── checkAgentforceSettings (Agentforce Agent + Einstein toggles) ─────────
+// Both toggles are Metadata-API-only; the check uses the Einstein Agent User
+// profile (standard REST) as the authoritative probe, with BotDefinition
+// (Tooling) as a best-effort fallback only.
+test('settings: enabled when the Einstein Agent User profile exists (primary probe)', async () => {
+  const api = createStubSfApi({
+    query: async () => [{ Id: '00eprofile' }],
   });
   const res = await checkAgentforceSettings(TOKEN, INSTANCE, api);
   assert.equal(res.enabled, true);
 });
 
-test('settings: not enabled when the Tooling object is unsupported', async () => {
+test('settings: not enabled when the profile query succeeds with no rows', async () => {
   const api = createStubSfApi({
-    toolingQuery: async () => {
-      throw new Error("sObject type 'BotDefinition' is not supported");
-    },
+    query: async () => [],
   });
   const res = await checkAgentforceSettings(TOKEN, INSTANCE, api);
   assert.equal(res.enabled, false);
   assert.match(res.reason, /not enabled/);
 });
 
+test('settings: profile present wins even when BotDefinition is unsupported (production regression)', async () => {
+  // Regression test for the reported bug: the org HAS the Einstein Agent
+  // User profile (Agentforce enabled) yet the BotDefinition Tooling probe
+  // returns "not supported". The old code read that as disabled and stuck
+  // the agents capability on attention. The profile is authoritative.
+  const api = createStubSfApi({
+    query: async () => [{ Id: '00eprofile' }],
+    toolingQuery: async () => {
+      throw new Error("sObject type 'BotDefinition' is not supported");
+    },
+  });
+  const res = await checkAgentforceSettings(TOKEN, INSTANCE, api);
+  assert.equal(res.enabled, true);
+});
+
+test('settings: BotDefinition unsupported degrades to unknown, not disabled, when profile is unprobeable', async () => {
+  // Profile query itself failed (restricted surface) AND BotDefinition is
+  // "not supported" — cannot distinguish "settings off" from "probe
+  // unavailable" → unknown (null), never a false disabled.
+  const api = createStubSfApi({
+    query: async () => {
+      throw new Error('INSUFFICIENT_ACCESS');
+    },
+    toolingQuery: async () => {
+      throw new Error("sObject type 'BotDefinition' is not supported");
+    },
+  });
+  const res = await checkAgentforceSettings(TOKEN, INSTANCE, api);
+  assert.equal(res.enabled, null);
+});
+
+test('settings: BotDefinition fallback queryable when profile probe fails → enabled', async () => {
+  const api = createStubSfApi({
+    query: async () => {
+      throw new Error('INSUFFICIENT_ACCESS');
+    },
+    toolingQuery: async () => [{ Id: '0B7x', Type: 'Agent' }],
+  });
+  const res = await checkAgentforceSettings(TOKEN, INSTANCE, api);
+  assert.equal(res.enabled, true);
+});
+
 test('settings: recognizes the real SfApiError shape (error text in body)', async () => {
   // sfApi throws SfApiError with message "Tooling query failed (400)" and the
-  // Salesforce errorCode/message inside err.body — the production shape.
+  // Salesforce errorCode/message inside err.body — the production shape. With
+  // the profile probe unavailable, this degrades to unknown, not disabled.
   const api = createStubSfApi({
+    query: async () => {
+      throw new Error('INSUFFICIENT_ACCESS');
+    },
     toolingQuery: async () => {
       const err = new Error('Tooling query failed (400)');
       err.body = [{ errorCode: 'INVALID_TYPE', message: "sObject type 'BotDefinition' is not supported" }];
@@ -124,11 +228,14 @@ test('settings: recognizes the real SfApiError shape (error text in body)', asyn
     },
   });
   const res = await checkAgentforceSettings(TOKEN, INSTANCE, api);
-  assert.equal(res.enabled, false);
+  assert.equal(res.enabled, null);
 });
 
 test('settings: transient failure degrades to unknown, never throws', async () => {
   const api = createStubSfApi({
+    query: async () => {
+      throw new Error('INVALID_SESSION_ID');
+    },
     toolingQuery: async () => {
       throw new Error('INVALID_SESSION_ID');
     },
@@ -253,7 +360,10 @@ test('full happy path: state=ok, both capabilities ok, provisioning done', async
 
 test('package missing: state=attention, org_change blocked, provisioning skipped (EC-14)', async () => {
   const api = createStubSfApi({
-    query: async () => [{ TotalLicenses: 10, UsedLicenses: 2 }],
+    // Only the license query returns rows — everything else (including the
+    // ECA fallback, which queries ExternalClientApplication via api.query)
+    // returns empty so the package verdict stays "missing".
+    query: async (t, u, soql) => (soql.includes('UserLicense') ? [{ TotalLicenses: 10, UsedLicenses: 2 }] : []),
     toolingQuery: async () => [], // not installed
   });
   const res = await runPreFlightCheck(TOKEN, INSTANCE, { api });

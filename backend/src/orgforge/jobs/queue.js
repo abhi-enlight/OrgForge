@@ -17,6 +17,7 @@ connection.on('error', () => {});
 export const orgIndexQueue = new Queue('orgforge-index-org', { connection });
 export const dependencyGraphQueue = new Queue('orgforge-dependency-graph', { connection });
 export const selfImprovementQueue = new Queue('orgforge-self-improvement', { connection });
+export const sessionCleanupQueue = new Queue('orgforge-session-cleanup', { connection });
 export const deploymentQueue = new Queue('orgforge-deployments', { connection });
 
 export const redisConnection = connection;

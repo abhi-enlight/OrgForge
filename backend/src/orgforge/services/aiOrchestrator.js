@@ -7,7 +7,7 @@ import {
   isWellFormedXml,
   validateCustomFieldXml,
 } from '../utils/aiSafety.js';
-import { supabaseAdmin } from './supabaseClient.js';
+import { supabaseAdmin } from '../../lib/supabaseClients.js';
 
 const DEFAULT_MODEL = 'gemini-3.1-pro-preview';
 
@@ -74,11 +74,14 @@ class AiOrchestrator {
   /**
    * Parse the natural language prompt into a structured, VALIDATED intent.
    * Every LLM-derived field is normalized against the safety whitelist.
+   * `conversationContext` (optional) is the bounded digest of earlier turns in
+   * this session so follow-ups like "do the same for Account" resolve.
    */
-  async parseIntent(prompt, businessRationale, orgContext) {
+  async parseIntent(prompt, businessRationale, orgContext, conversationContext) {
     const sysPrompt = `
       You are the OrgForge Intent Parser.
       Context: ${JSON.stringify(orgContext)}
+      ${conversationContext ? `\n      Conversation Context (earlier turns in THIS session — use it to disambiguate follow-ups, never to invent metadata):\n      ${conversationContext}` : ''}
 
       Extract the target component, operation (CREATE, UPDATE, DELETE), and potential ambiguities.
       Analyze the intent for specific Salesforce ambiguities, such as Validation Rule formula scope (e.g., ISCHANGED(StageName) vs static checks).
@@ -146,9 +149,10 @@ class AiOrchestrator {
 
   /**
    * Generate the metadata XML using a resolved skill, then verify the result
-   * is well-formed XML before returning it.
+   * is well-formed XML before returning it. `conversationContext` (optional)
+   * is the bounded digest of earlier turns in this session.
    */
-  async generateMetadata(skillContent, structuredIntent, prompt, businessRationale) {
+  async generateMetadata(skillContent, structuredIntent, prompt, businessRationale, conversationContext) {
     let lessonsText = '';
     try {
       const { data: lessons, error } = await supabaseAdmin
@@ -173,6 +177,7 @@ class AiOrchestrator {
       CRITICAL CONSTRAINTS:
       - NEVER attempt to convert the data type (<type>) of an existing Salesforce Custom Field via Metadata API (e.g. changing Text to Picklist). It will fail validation.
       - If the operation is UPDATE_CUSTOM_FIELD and you don't know the exact existing type, do NOT assume a new type. Infer it from the User Prompt if possible, or use the most conservative matching type. Keep it consistent with typical default or standard usage unless creating a NEW field.
+      ${conversationContext ? `\n      Conversation Context (earlier turns in THIS session — the user may be referring to a previously discussed component or field):\n      ${conversationContext}` : ''}
 
       User Prompt: ${prompt || 'N/A'}
       Business Rationale: ${businessRationale || 'N/A'}

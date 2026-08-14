@@ -3,15 +3,20 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Bot, ShieldCheck, ScrollText, ArrowRight, Sparkles, RefreshCw, Database } from 'lucide-react';
+import { Bot, ShieldCheck, ScrollText, ArrowRight, Sparkles, RefreshCw, Database, PackageOpen, ExternalLink } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, ApiError, ORG_RECONNECT_REQUIRED } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
+import ReconnectSalesforceNotice from '@/components/org/ReconnectSalesforceNotice';
 import { useActiveOrg } from '@/lib/org-context';
 import { useOrgReadiness, agentsUnavailableHint } from '@/lib/orgReadiness';
 import { ToastProvider, useToast } from '@/components/providers/ToastProvider';
 import { cn } from '@/lib/utils';
 import { EASE_REVEAL } from '@/lib/motion';
+import ActivityChart from '@/components/dashboard/ActivityChart';
+import StatusDonut from '@/components/dashboard/StatusDonut';
+import OrgHealthPanel from '@/components/dashboard/OrgHealthPanel';
+import AgentsOverview from '@/components/dashboard/AgentsOverview';
 
 interface ChangeRecord {
   id?: string;
@@ -52,10 +57,7 @@ function timeAgo(iso?: string): string {
 const GREETINGS = [
   'Welcome back',
   'Good to see you',
-  'Hey there',
-  'Welcome',
   'Hello again',
-  'Great to have you back',
 ];
 
 function greetingForToday(): string {
@@ -66,7 +68,7 @@ function greetingForToday(): string {
 }
 
 /**
- * Dashboard (plan §6.2) — the calm home. One hero action (Ask OrgForge), three
+ * Dashboard (plan §6.2) — the calm home. One hero action (Ask Forge), three
  * clickable stat tiles, one attention banner (only when something is wrong),
  * and one unified activity feed. Empty states collapse the page to a single
  * CTA per the "not too much" rule (§6.0).
@@ -84,7 +86,7 @@ export default function DashboardPage() {
 
 function DashboardContent() {
   const router = useRouter();
-  const { org, setOrgs } = useActiveOrg();
+  const { org } = useActiveOrg();
   const reduceMotion = useReducedMotion();
   const toast = useToast();
   // Org readiness (SHARED via the provider — chat chip + sign-in banner + the
@@ -97,8 +99,15 @@ function DashboardContent() {
   const [agents, setAgents] = useState<AgentSummary[] | null>(null);
   const [records, setRecords] = useState<ChangeRecord[] | null>(null);
   const [agentsError, setAgentsError] = useState<string | null>(null);
+  // ORG_RECONNECT_REQUIRED from the agents fetch — the org's Salesforce
+  // refresh token was rejected, so the fix is a Reconnect Salesforce CTA
+  // (the app session itself is fine).
+  const [agentsReconnect, setAgentsReconnect] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Either the shared readiness check OR the agents fetch reported
+  // ORG_RECONNECT_REQUIRED → one clear Reconnect Salesforce row (never two).
+  const needsReconnect = readiness.reconnectRequired || agentsReconnect;
 
   // The user's first name (from auth user_metadata set at signup or by the
   // one-time NameCaptureModal) personalizes the greeting. Re-reads on the
@@ -129,44 +138,27 @@ function DashboardContent() {
   // org actually used, so the recheck handler can confirm the refresh with a
   // toast that names the org (the closure `org` may be stale mid-refresh).
   const load = async (): Promise<{ agentsOk: boolean; count: number; error?: string; orgName?: string } | null> => {
-    // Org list — the pill and the empty-state both depend on it.
-    let activeOrg = org;
-    try {
-      const { orgs: fetched } = await apiFetch<{ orgs: Array<{ id: string; alias?: string; type?: string; instanceUrl?: string }> }>(
-        '/api/v1/orgs'
-      );
-      const mapped = (fetched || []).map((o) => ({
-        id: o.id,
-        name: o.alias || o.id,
-        orgType: (['production', 'sandbox', 'scratch'].includes(o.type || '')
-          ? o.type
-          : 'production') as 'production' | 'sandbox' | 'scratch',
-        instanceUrl: o.instanceUrl,
-      }));
-      setOrgs(mapped);
-      // No persisted selection yet → default to the first org so the agents
-      // tile loads on the first visit (the mount-time `org` closure is null).
-      activeOrg = activeOrg ?? mapped[0] ?? null;
-    } catch {
-      /* backend unreachable — the no-org empty state handles it */
-    }
-
+    // The org list lives in the shared ActiveOrgProvider (fetched once per
+    // tab session) — `org` below is the active org from context, so the
+    // agents tile loads without re-fetching /api/v1/orgs on every visit.
     // Agents (read-only count over the unified inventory route, §10.1).
     let agentsResult: { agentsOk: boolean; count: number; error?: string; orgName?: string } | null = null;
-    if (activeOrg) {
-      agentsResult = { agentsOk: false, count: 0, orgName: activeOrg.name };
+    if (org) {
+      agentsResult = { agentsOk: false, count: 0, orgName: org.name };
       try {
         const { agents: a } = await apiFetch<{ agents: AgentSummary[] }>(
-          `/api/v1/agents?orgId=${encodeURIComponent(activeOrg.id)}`
+          `/api/v1/agents?orgId=${encodeURIComponent(org.id)}`
         );
         const list = Array.isArray(a) ? a : [];
         setAgents(list);
         setAgentsError(null);
-        agentsResult = { agentsOk: true, count: list.length, orgName: activeOrg.name };
+        setAgentsReconnect(false);
+        agentsResult = { agentsOk: true, count: list.length, orgName: org.name };
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load agents';
         setAgents(null);
         setAgentsError(message);
+        setAgentsReconnect(err instanceof ApiError && err.code === ORG_RECONNECT_REQUIRED);
         agentsResult = { agentsOk: false, count: 0, error: message };
       }
     } else {
@@ -186,12 +178,15 @@ function DashboardContent() {
 
   useEffect(() => {
     // Deferred so state settles after mount (react-hooks/set-state-in-effect).
+    // Keyed on org?.id: on the first visit the shared provider may still be
+    // fetching the org list, so this re-runs once the org arrives (and on
+    // org switch) instead of relying on a mount-time closure.
     const timer = setTimeout(() => {
       load();
     }, 0);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [org?.id]);
 
   const askForge = (prompt: string) => router.push(`/chat?prompt=${encodeURIComponent(prompt)}`);
   const recheck = async () => {
@@ -227,8 +222,8 @@ function DashboardContent() {
           Connect Salesforce to get started
         </h1>
         <p className="mt-3 text-slate-500 max-w-md">
-          OrgForge builds and deploys AI agents, and makes governed org changes. Connect your org —
-          everything else runs in the background.
+          Forge builds and deploys AI agents, and makes governed org changes. Connect your org.
+          Everything else runs in the background.
         </p>
         <div className="mt-8 flex gap-3">
           <Link
@@ -243,7 +238,7 @@ function DashboardContent() {
             disabled={refreshing}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-brand-border bg-white text-slate-600 font-medium hover:bg-brand-surface transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-wait"
           >
-            <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} /> I&apos;ve connected — recheck
+            <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} /> Recheck after connecting
           </button>
         </div>
       </div>
@@ -253,7 +248,7 @@ function DashboardContent() {
   const statTiles = [
     {
       label: 'Agents',
-      value: agents ? agents.length : '—',
+      value: agents ? agents.length : '–',
       loading: statsLoading,
       loadingHint: 'Fetching live agent count…',
       hint: agentsUnavailable
@@ -269,30 +264,33 @@ function DashboardContent() {
         ? () => router.push('/settings')
         : () => askForge('List my agents'),
       accent: 'from-brand-blue/10 to-transparent',
+      accentBar: 'from-brand-blue to-brand-blue/0',
       iconColor: 'text-brand-blue',
       unavailable: agentsUnavailable,
     },
     {
       label: 'Open changes',
-      value: records ? records.filter((r) => ['pending', 'awaiting_approval', 'draft'].includes(String(r.status || '').toLowerCase())).length : '—',
+      value: records ? records.filter((r) => ['pending', 'awaiting_approval', 'draft'].includes(String(r.status || '').toLowerCase())).length : '–',
       loading: statsLoading,
       loadingHint: 'Fetching open changes…',
       hint: 'governed org changes',
       icon: ShieldCheck,
       action: () => askForge('What changes are pending?'),
       accent: 'from-brand-warning/10 to-transparent',
+      accentBar: 'from-brand-warning to-brand-warning/0',
       iconColor: 'text-brand-warning',
       unavailable: false,
     },
     {
       label: 'Audit trail',
-      value: records ? records.length : '—',
+      value: records ? records.length : '–',
       loading: statsLoading,
       loadingHint: 'Fetching audit trail…',
       hint: records && records.length > 0 ? timeAgo(records[0]?.createdAt) : 'signed change records',
       icon: ScrollText,
       action: () => askForge('Show recent changes'),
       accent: 'from-brand-pass/10 to-transparent',
+      accentBar: 'from-brand-pass to-brand-pass/0',
       iconColor: 'text-brand-pass',
       unavailable: false,
     },
@@ -315,10 +313,26 @@ function DashboardContent() {
           className="group inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-brand-blue text-white font-semibold shadow-glow hover:bg-brand-blue-hover transition-[background-color,transform] hover:scale-[1.02]"
         >
           <Sparkles className="w-4 h-4" />
-          Ask OrgForge
+          Ask Forge
           <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
         </button>
       </div>
+
+      {/* Salesforce reconnect row — the org's stored refresh token was
+          rejected (ORG_RECONNECT_REQUIRED from the readiness check or the
+          agents fetch). The app session is still valid, so the fix is a
+          one-click re-link — never a sign-out. Shown above the tiles so the
+          broken org can't be missed. */}
+      {needsReconnect && (
+        <ReconnectSalesforceNotice
+          message={
+            readiness.reconnectRequired
+              ? readiness.error || undefined
+              : agentsError || undefined
+          }
+          onRetry={readiness.reconnectRequired ? readiness.retry : recheck}
+        />
+      )}
 
       {/* Three stat tiles — clickable, deep-link into chat (§6.2) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -333,8 +347,16 @@ function DashboardContent() {
               transition={{ duration: 0.3, delay: index * 0.04, ease: EASE_REVEAL }}
               onClick={tile.action}
               aria-busy={tile.loading}
-              className="group text-left rounded-2xl border border-brand-border bg-white p-5 shadow-soft hover:shadow-card-hover hover:border-brand-blue/30 transition-[box-shadow,border-color] duration-200 cursor-pointer"
+              className="group relative overflow-hidden text-left rounded-2xl border border-brand-border bg-white p-5 shadow-soft hover:shadow-card-hover hover:border-brand-blue/30 transition-[box-shadow,border-color] duration-200 cursor-pointer"
             >
+              {/* Top accent hairline — a quiet color-coded signal per KPI */}
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r opacity-80',
+                  tile.accentBar
+                )}
+              />
               <div className={cn('flex items-center justify-between mb-4')}>
                 <span className={cn(
                   'w-9 h-9 rounded-xl bg-gradient-to-br flex items-center justify-center',
@@ -351,7 +373,9 @@ function DashboardContent() {
                   <span className="skeleton-strong h-7 w-16 rounded-md" aria-hidden="true" />
                 </span>
               ) : (
-                <p className="text-2xl font-bold text-brand-dark">{tile.value}</p>
+                <p className="font-mono text-3xl font-bold text-brand-dark tabular-nums tracking-tight">
+                  {tile.value}
+                </p>
               )}
               <p className="text-sm font-medium text-slate-600 mt-0.5 flex items-center gap-2">
                 {tile.label}
@@ -370,12 +394,46 @@ function DashboardContent() {
         })}
       </div>
 
-      {/* Attention banner — only when something is wrong (§6.0.5) */}
-      {agentsError && (
+      {/* Package-health status row — when the OrgForge Connector package is
+          missing, link straight to the Salesforce package installer. The
+          Agents tile itself is a button (can't nest a link), so the row
+          carries the install action; it shows whenever the shared preflight
+          reports the connector absent. */}
+      {readiness.diag?.checks?.package?.installed === false && (
+        <div className="flex items-center gap-3 rounded-2xl border border-brand-warning/30 bg-brand-warning-bg px-5 py-4 animate-slide-up">
+          <PackageOpen className="w-4 h-4 text-brand-warning shrink-0" />
+          <p className="text-sm text-slate-700 flex-1">
+            The OrgForge Connector package isn&apos;t installed in {org?.name || 'this org'}. Chat and org
+            changes stay locked until it&apos;s installed.
+          </p>
+          {readiness.diag.installUrl && (
+            <a
+              href={readiness.diag.installUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-blue hover:underline"
+            >
+              Get install link
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          )}
+          <Link
+            href="/settings"
+            className="shrink-0 text-sm font-semibold text-brand-warning hover:underline"
+          >
+            Settings
+          </Link>
+        </div>
+      )}
+
+      {/* Attention banner — only when something is wrong (§6.0.5). The
+          reconnect case is already surfaced by the notice above, so this
+          stays for genuine non-reconnect agents failures. */}
+      {agentsError && !agentsReconnect && (
         <div className="flex items-center gap-3 rounded-2xl border border-brand-warning/30 bg-brand-warning-bg px-5 py-4 animate-slide-up">
           <RefreshCw className="w-4 h-4 text-brand-warning shrink-0" />
           <p className="text-sm text-slate-700 flex-1">
-            Couldn&apos;t load your agents — {agentsError}
+            Couldn&apos;t load your agents: {agentsError}
           </p>
           <button
             type="button"
@@ -388,10 +446,49 @@ function DashboardContent() {
         </div>
       )}
 
+      {/* Data-viz row — real data, hand-rolled SVG charts (§6.2) */}
+      <motion.div
+        initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.12, ease: EASE_REVEAL }}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+      >
+        <ActivityChart records={records} loading={loading} className="lg:col-span-2" />
+        <StatusDonut records={records} loading={loading} />
+      </motion.div>
+
+      {/* Operational row — org health posture + deployed agents */}
+      <motion.div
+        initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay: 0.18, ease: EASE_REVEAL }}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+      >
+        <OrgHealthPanel
+          // Attribution-guard: only render the diag when it belongs to the
+          // active org (no cross-org flash while switching).
+          diag={readiness.orgId === org?.id ? readiness.diag : null}
+          status={readiness.status}
+          orgName={org?.name}
+          onRetry={readiness.retry}
+        />
+        <AgentsOverview
+          agents={agents}
+          loading={statsLoading}
+          agentsUnavailable={agentsUnavailable}
+          hint={agentsUnavailable ? agentsUnavailableHint(readiness.diag) : undefined}
+        />
+      </motion.div>
+
       {/* Activity feed — one shared visual language for both engines (§6.2) */}
       <section className="rounded-2xl border border-brand-border bg-white shadow-soft overflow-hidden">
         <div className="px-5 py-4 border-b border-brand-border flex items-center justify-between">
-          <h2 className="font-semibold text-brand-dark">Recent activity</h2>
+          <div>
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+              Governance trail
+            </p>
+            <h2 className="mt-1 font-semibold text-brand-dark">Recent activity</h2>
+          </div>
           <Link href="/changes" className="text-sm font-medium text-brand-blue hover:underline">
             View all
           </Link>

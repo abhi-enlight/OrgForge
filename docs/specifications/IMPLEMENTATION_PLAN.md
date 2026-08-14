@@ -19,10 +19,11 @@
 > Pass 23 added the forge-schema verifier (`backend/scripts/verifySchema.mjs`);
 > Pass 32 made the repo one self-contained app (OrgForge + Agentforge ported
 > in-repo, `@forge/compat` retired); Pass 34 re-homed the OrgForge service unit
-> tests; Pass 35 added the agentforge offline smoke + worker-boot guard; backend
-> **402/402**. Still
-> open: migration 011 (🔷 S-5, drafted when Phase 3 data work starts), Supabase
-> MCP migrations (S-1/S-2/S-4), and Phase 5 canary/soak. All
+> tests; Pass 35 added the agentforge offline smoke + worker-boot guard; the
+> 2026-08-14 cleanup pass removed the legacy alias routers + transition deps
+> and **EC-37** landed agent-deploy audit records (migration `014`, backend
+> **342/342**, workspace **445/445**, frontend tsc/lint ✅). Still
+> open: applying migration 014 live (🔷), and Phase 5 canary/soak/301s. All
 > tasks are checkbox-tracked.
 > **Legend:** ✅ done · ⬜ todo · 🔷 **SUPABASE TASK** (deferred — applied later via Supabase MCP) · 🔒 blocked-by
 
@@ -36,7 +37,8 @@
 | `packages/org-connections` — crypto, refresh dedup, re-link | ✅ 17 tests |
 | ~~`packages/compat` — CJS↔ESM router adapter~~ | ✅ **retired** (Pass 32 — no CJS router remains; Agentforge is native ESM) |
 | `backend/` — merged Express entry, health, JSON 404, `link-legacy` route | ✅ 4 tests; merged mounts smoke-verified |
-| Migrations `008`/`010` SQL | ✅ **Applied live via MCP (Pass 43)** — 6 `forge.*` tables + RLS policies verified (`org_connections`, `agents`, `chat_sessions`, `routing_log`, `diagnostics`, `ai_logs`) |
+| Migrations `008`/`010` SQL | ✅ **Applied live via MCP (Pass 43)** — 6 `orgforge.*` tables + RLS policies verified (`org_connections`, `agents`, `chat_sessions`, `routing_log`, `diagnostics`, `ai_logs`) |
+| Migrations `011`–`013` SQL | ✅ **Applied live via MCP (Pass 51)** — `orgforge.github_connections` (011), `chat_sessions` memory columns (012), five data tables (013); schema exposed in `pgrst.db_schemas` + grants for all API roles; **strict orgforge isolation live**: 12/12 tables reachable, RLS intact, public duplicates gone |
 | `frontend` — Next 16 + Tailwind v4 shell, auth gate, login + 3-step onboarding, dashboard, Copilot, Agents | ✅ tsc/lint/build; smoke-verified (10 static routes + `/`→`/dashboard`) |
 | Canary: `FORGE_UNIFIED_FRONTEND=on` flag + stub rule-based classifier chip (§14.2 Phase 1) | ✅ flag-on build serves `/chat`; stub `classifyWithStub` in `packages/ai` |
 | Conversation state (§7.3): Redis lock + persistence | ✅ token-owned SET-NX-PX lock (600s TTL, atomic Lua owner-checked release), in-memory degrade when Redis is down, live-Redis smoke verified |
@@ -85,7 +87,7 @@
 - [x] Move Agentforge conversation state (in-memory `activeConversations` Map) to Redis keyed by `{user_id, org_id}` (plan §7.3) — Pass 14: `backend/src/lib/redisConversations.js` (token-owned SET-NX-PX busy lock, 600s TTL, atomic Lua owner-checked release, state snapshot with 4h TTL, in-memory fallback when Redis is down) + `agentEngine.js` rewrite (lock, persist-after-turn, hydrate-on-miss, manager eviction) + `chatStream` awaits the async `isBusy`; keyed by `{user_id, org_id, session_id}`
 - [x] Unify `ai_logs` writes: single writer in `packages/ai` writing to `forge.ai_logs` (both engines) — Pass 14: `packages/ai/src/aiLogs.js` `writeAiLog` fire-and-forget (missing table → warn+skip; other errors fail-loud); wired into chat/stream agent + org steps (success + failure rows); `forge.ai_logs` added to migration 008 + health readiness set
 - [ ] **🔷 SUPABASE TASK:** apply `008_forge_schema.sql` (forge schema + RLS) before unifying ai_logs / diagnostics
-- [ ] Legacy apps read-only display mode (EC-39): point legacy reads at `forge.*` views, add "continue in Forge" banner — **defers to Phase 5 if legacy stays read-write for now**
+- [x] Legacy apps read-only display mode (EC-39) — **closed as moot (2026-08-14)**: the legacy apps are decommissioned (deploys stopped, aliases removed), so there is nothing left to point at `forge.*` views; no banner needed (F-5 dropped)
 
 ## 4. Phase 3 — Data unification + diagnostics
 
@@ -103,9 +105,9 @@
 - [ ] **🔷 SUPABASE TASK:** apply migration `008` so `forge.diagnostics` (and the other forge tables) persist for real (code is written + tested; this lands the schema)
 
 ### Data
-- [ ] Re-link flow verification against real project (after 010 applied)
-- [ ] Extend `change_records` to agent deploys: `kind: 'org_change' | 'agent_deploy'` (EC-37: snapshot pre-deploy YAML/Apex into the record) — **🔷 SUPABASE TASK:** migration `011` (change_records kind + agent snapshot columns)
-- [ ] **🔷 SUPABASE TASK:** backfill `forge.org_connections` from `orgforge.org_connections` (idempotent)
+- [ ] Re-link flow verification against real project — **probed 2026-08-14 (read-only, service-role)**: both 010 RPCs exist and run (get → 0 rows, delete → OK); `public.salesforce_connections` has **0 rows**, so there is nothing to re-link — the flow would no-op. Re-link is effectively moot post-decommission; verification only matters if a legacy token ever appears
+- [x] Extend `change_records` to agent deploys: `kind: 'org_change' | 'agent_deploy'` (EC-37: snapshot pre-deploy YAML/Apex into the record) — **code done 2026-08-14** (migration `014_change_records_agent_kind.sql` drafted, service/route/agent-engine hook + tests); 🔷 **apply migration 014 via MCP** to land the columns (011 was consumed by `github_connections` in Pass 51)
+- [ ] **🔷 SUPABASE TASK:** Confirm legacy auth tables populated — **probed 2026-08-14**: `orgforge.org_connections` = **11 rows (the Pass-30 test fixtures — no real org connected through the app OAuth yet, so F-4 stays blocked)**; `auth.users` is NOT queryable via PostgREST (the `auth` schema isn't exposed in `pgrst.db_schemas`) — confirm users via the Supabase dashboard (Auth → Users) instead
 
 ## 5. Phase 4 — Real router + inline cards + onboarding
 
@@ -132,6 +134,27 @@
   the EC-14 `invalidateAndRecheck` behavior, plan §7)
 - [x] `forge.chat_sessions` as shared context spine (§7.3) — chat/stream appends capability segments + rolling compressed_history per turn (Pass 11); `session_id` column added to 008; 🔷 table lands with the migration
 - [x] Handoff: `both` capability → sequential execution with per-segment progress cards (EC-23) — Pass 17: chat groups progress by the capability tag (agent card, then org-change card, each with a labeled pill); the interleaved handoff status is tagged org_change so it opens the org card. (EC-35 serialize+queue when both touch the same metadata stays engine-internal / deferred.)
+- [x] **Durable context memory** (Pass 47) — `orgforge.chat_sessions` gains
+      `transcript JSONB` + `context_summary TEXT` (migration 012); the agent
+      engine persists every turn and resumes a cold start from **summary +
+      recent verbatim tail** (bounded, ~1 token per historical turn); the
+      flash compression pass was hardened (shared extract/normalize helpers;
+      consecutive same-role turns merge, never drop; keep newest 6 verbatim;
+      post-build compression allowed with exact-name hints; mid-deploy
+      blocked); the org engine's `priorContext` digest got the same keep-tail
+      + merge protection (Pass 48). No cross-session/cross-tenant leakage:
+      every read/write triple-scoped `(user_id, org_id, session_id)` + RLS;
+      Clear/reset wipes the durable spine too.
+- [x] **Session expiry job** (Pass 49) — nightly `session-cleanup` (03:05,
+      BullMQ, idempotent jobId) garbage-collects orphaned `chat_sessions`
+      rows idle past `CHAT_SESSIONS_RETENTION_DAYS` (default 7, clamped 1–90);
+      pure core in `lib/sessionCleanup.js` (batched 500/run, 50k budget,
+      missing-table degrades to a skip).
+- [x] **Session history picker** (Pass 50) — `GET /api/v1/chat/sessions`
+      (tenant-scoped light list) + `GET /api/v1/chat/sessions/:sessionId`
+      (full-spine restore); frontend History dropdown + resume flow (adopts
+      the session id into sessionStorage, rebuilds the transcript from
+      durable memory; next send continues the same spine).
 
 ### Frontend (Appendix A step 4) — `frontend`
 - [x] Scaffold `frontend` (Next.js 16 + Tailwind v4 `@theme`) + added to root workspaces + `dev:web`/`lint`/`typecheck` scripts; build passes (8 static routes + `/` → `/dashboard` 307)
@@ -156,27 +179,28 @@
 - [ ] Canary: internal team + 2 friendly customers on flags; watch route mis-classifications, SSE drops, diagnostics false-negatives (§14.3)
 - [ ] 2-week soak; fix regression deltas vs Phase-0 oracle
 - [ ] Point old domains at new app (301s); verify DNS atomically (D5: never 404)
-- [ ] Remove the legacy `/api/auth` + `/api/org` alias mounts; stop legacy deploys
+- [x] Stop legacy frontend + API deploys (**done 2026-08-14**, ahead of the 301 step — no rollback-to-legacy; 301s are now time-critical)
+- [x] Remove the legacy `/api/auth` + `/api/org` alias mounts (**done 2026-08-14** — `enableAgentforge` block + express-session middleware removed from `app.js`; dead alias routers deleted)
 - [ ] **🔷 SUPABASE TASK:** after sign-off — drop legacy `public.salesforce_connections` / old `orgforge` views (additive-first; never delete before sign-off)
-- [ ] Delete `LEGACY_JWT_SECRET`, `SESSION_SECRET`, `FORGE_MOUNT_AGENTFORGE` block
+- [x] Delete `LEGACY_JWT_SECRET`, `SESSION_SECRET`, `FORGE_MOUNT_AGENTFORGE` block (**done 2026-08-14** — env files + docs swept; `express-session` dep removed)
 - [ ] Optional: rename internal identifiers (npm names, schemas) — explicitly out of merge scope
 
 ---
 
-## 7. 🔷 SUPABASE TASKS — all deferred (applied via Supabase MCP)
+## 7. 🔷 SUPABASE TASKS — applied live (Passes 43 + 51); remaining: Phase-5 decommission
 
-> These are the only tasks the user executes outside this repo. Order matters —
-> each is gated by the migration numbered above.
+> Applied via Supabase MCP by the user (the only in-repo external step).
 
-| # | Task | Migration/file | Blocks |
+| # | Task | Migration/file | Status |
 |---|---|---|---|
-| S-1 | Apply `010_forge_legacy_rpc.sql` (legacy table + re-link RPCs) | `supabase/migrations/010_forge_legacy_rpc.sql` | link-legacy end-to-end |
-| S-2 | Apply `008_forge_schema.sql` (forge schema, tables, RLS) | `supabase/migrations/008_forge_schema.sql` | ai_logs, diagnostics, agents, chat_sessions, routing_log |
-| S-3 | Apply OrgForge 001–007 if not already present | `/Users/abhi/Enlight/archive/OrgForge/supabase/migrations/` (legacy repo archived, Pass 33) | everything |
-| S-4 | Confirm Supabase Auth config (email provider, redirect URLs, rate limits) | Dashboard → Auth | login flow |
-| S-5 | Migration 011: change_records `kind` + agent-deploy snapshot columns | draft when Phase 3 starts | EC-37 rollback-for-agents |
-| S-6 | Backfill `forge.org_connections` from `orgforge.org_connections` (idempotent) | SQL job | data continuity |
-| S-7 | Post-sign-off: drop legacy `public.salesforce_connections` + old views | Phase 5 only | — |
+| S-1 | Re-link RPCs | `010_forge_legacy_rpc.sql` | ✅ Pass 43 |
+| S-2 | orgforge schema, tables, RLS (008) | `008_forge_schema.sql` | ✅ Pass 43 (6 tables verified) |
+| S-3 | OrgForge 001–007 present | archive (Pass 33) | ✅ (pre-existing) |
+| S-4 | Supabase Auth config (email, redirects, rate limits) | Dashboard → Auth | ✅ |
+| S-5 | `011_forge_github_connections` (orgforge.github_connections) | `011_github_connections.sql` | ✅ Pass 51 |
+| S-6 | `012_forge_context_memory` (transcript + context_summary) | `012_forge_context_memory.sql` | ✅ Pass 51 |
+| S-7 | `013_forge_data_tables` (change_records, org_indexes, ai_lessons, deployments, change_sets + RLS + GRANTs) | `013_forge_data_tables.sql` | ✅ Pass 51 — schema exposed in `pgrst.db_schemas`, grants for all API roles, live-probed 12/12 |
+| S-8 | Drop legacy `public` app tables (github_connections already dropped; org_connections/refusal_logs stay for legacy reads until sign-off) | Phase 5, after sign-off | ⬜ deferred |
 
 ## 8. Dependency order (what to build next)
 

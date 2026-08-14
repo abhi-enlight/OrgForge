@@ -51,7 +51,7 @@ test('GET /api/v1/health/db: all forge tables reachable → healthy 200', async 
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.status, 'healthy');
-    assert.equal(body.schema, 'forge');
+    assert.equal(body.schema, 'orgforge');
     assert.deepEqual(body.missingTables, []);
   } finally {
     server.close();
@@ -110,7 +110,7 @@ test('GET /api/v1/health/db: real DB failure → 500 (fail-loud, not a table-mis
 
 test('isMissingSchemaError: PGRST106 / "invalid schema" only, not single-table misses', () => {
   assert.equal(isMissingSchemaError({ message: 'PGRST106', details: 'invalid schema' }), true);
-  assert.equal(isMissingSchemaError({ message: 'Invalid schema: forge' }), true);
+  assert.equal(isMissingSchemaError({ message: 'Invalid schema: orgforge' }), true);
   assert.equal(isMissingSchemaError({ message: "Could not find the table 'forge.routing_log' in schema cache" }), false);
   assert.equal(isMissingSchemaError({ message: 'Connection refused' }), false);
   assert.equal(isMissingSchemaError(null), false);

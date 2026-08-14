@@ -1,21 +1,24 @@
 #!/usr/bin/env node
 /**
- * verifySchema.mjs — Forge schema verifier (migration 008 / S-2).
+ * verifySchema.mjs — Forge schema verifier (migrations 008, 011–014).
  *
  * Extends OrgForge's `backend/scripts/verifySchema.mjs` convention to the
- * unified `forge` schema. Verifies ALL SIX forge.* tables exist and carry the
- * required columns from `supabase/migrations/008_forge_schema.sql`, scoped to
- * the forge schema (same client pattern as `backend/src/routes/health.js`).
+ * unified `orgforge` schema. Verifies ALL TWELVE orgforge.* tables exist and
+ * carry the required columns from `supabase/migrations/` (008 core schema,
+ * 011 github_connections, 012 chat_sessions memory columns, 013 data tables,
+ * 014 change_records agent kind), scoped to the orgforge schema (same client
+ * pattern as `backend/src/routes/health.js`).
  *
- * Exit codes:  0 = all six tables healthy (exist + all required columns)
+ * Exit codes:  0 = all twelve tables healthy (exist + all required columns)
  *              1 = any table missing, permission-denied, or column-gap
  *
  * Run from the repo root or api/:
  *   node backend/scripts/verifySchema.mjs
  * Env: NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (api/.env or root .env)
  *
- * Pre-migration expectation: reports all six MISSING (forge schema absent) —
- * that is the correct signal to run S-2, not a script failure.
+ * Pre-migration expectation: reports all twelve MISSING (orgforge schema
+ * absent) — that is the correct signal to run the migrations, not a script
+ * failure.
  */
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
@@ -31,15 +34,14 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 /**
- * The six forge.* tables migration 008 creates + their required columns.
+ * The twelve orgforge.* tables the migrations create.
  *
- * NOTE (Pass 42): forge.org_connections is VESTIGIAL — the copilot resolves
- * credentials from the default-schema public.org_connections (the store the
- * OAuth flow writes). It stays in the verification set only because 008 still
- * creates it (this verifier doubles as "is 008 applied").
- * See supabase/migrations/README.md.
+ * Existence probe note: the probe selects the table's FIRST required column
+ * (not hardcoded 'id') because github_connections is keyed on user_id and has
+ * no id column.
  */
 export const FORGE_TABLES = {
+  // ── 008 core schema (S-2) ────────────────────────────────────────────
   org_connections: [
     'id', 'user_id', 'org_id', 'org_type', 'alias', 'instance_url',
     'encrypted_tokens', 'capabilities', 'context_indexed_at',
@@ -52,6 +54,8 @@ export const FORGE_TABLES = {
   chat_sessions: [
     'id', 'session_id', 'user_id', 'org_id', 'capability_segments',
     'compressed_history', 'created_at', 'updated_at',
+    // 012_forge_context_memory.sql (durable memory columns)
+    'transcript', 'context_summary',
   ],
   routing_log: [
     'id', 'user_id', 'prompt_hash', 'capability', 'confidence',
@@ -66,19 +70,54 @@ export const FORGE_TABLES = {
     'latency_ms', 'model_version', 'intent_id', 'dry_run_errors',
     'ai_repair_attempts', 'created_at',
   ],
+  // ── 011_github_connections.sql (audit-repo destination, D8) ────────────
+  github_connections: [
+    'user_id', 'installation_id', 'repo_owner', 'repo_name', 'created_at',
+  ],
+  // ── 013_forge_data_tables.sql (five data tables) ─────────────────────
+  change_records: [
+    'id', 'user_id', 'org_id', 'change_intent_id', 'deployment_id',
+    'approver_identity', 'git_commit_hash', 'signature_hash', 'intent',
+    'business_rationale', 'status', 'skills_used', 'impact_brief',
+    'gate_results', 'dry_run_id', 'artifacts', 'created_at',
+    // 014_change_records_agent_kind.sql (EC-37 agent deploys)
+    'kind', 'agent_name', 'agent_snapshot',
+  ],
+  org_indexes: [
+    'id', 'org_id', 'metadata_type', 'api_name', 'namespace_prefix',
+    'referencing_components', 'created_at', 'updated_at',
+  ],
+  ai_lessons: [
+    'id', 'lesson_text', 'active', 'created_at',
+  ],
+  deployments: [
+    'id', 'user_id', 'org_id', 'status', 'created_at',
+  ],
+  change_sets: [
+    'id', 'deployment_id', 'created_at',
+  ],
 };
 
 // Error classification — mirrors `api/src/lib/isMissingTable.js` (S-2
 // semantics: missing table degrades, ANY other error fails loudly).
 const MISSING_TABLE_RE = /could not find the .* table|does not exist|PGRST106|invalid schema/i;
-const MISSING_COLUMN_RE = /could not find the '([^']+)' column/i;
+// PostgREST names ONE missing column per request, in two shapes:
+//   PGRST204: "Could not find the 'kind' column of 'change_records' in the schema cache"
+//   PG/PostgREST passthrough: "column change_records.kind does not exist"
+const MISSING_COLUMN_RE = /could not find the '([^']+)' column|column (?:[^.]+\.)?([^ ]+) does not exist/i;
 const PERMISSION_RE = /PGRST101|permission denied/i;
+
+/** Extracts the missing column name from either PostgREST error shape. */
+function extractMissingColumn(message) {
+  const match = MISSING_COLUMN_RE.exec(message);
+  return match?.[1] || match?.[2] || null;
+}
 
 /**
  * Verifies every table in `tables` exists with its required columns.
  *
  * @param {object} opts
- * @param {object} opts.db - supabase client scoped to the forge schema
+ * @param {object} opts.db - supabase client scoped to the orgforge schema
  * @param {Record<string,string[]>} [opts.tables] - { table: [required columns] }
  * @returns {Promise<{ok: boolean, results: Array<object>}>} per-table verdicts
  *   ({ table, ok, missing?, permission?, missingColumns?, errorMessage? }) —
@@ -92,8 +131,10 @@ export async function runVerification({ db, tables = FORGE_TABLES }) {
   const results = [];
 
   for (const [table, requiredColumns] of Object.entries(tables)) {
-    // 1. Existence probe (same shape as /health/db's check).
-    const { error: existsError } = await db.from(table).select('id').limit(1);
+    // 1. Existence probe (same shape as /health/db's check). Probes the
+    // table's first required column — github_connections has no 'id' column.
+    const probeColumn = requiredColumns[0];
+    const { error: existsError } = await db.from(table).select(probeColumn).limit(1);
 
     if (existsError) {
       if (MISSING_TABLE_RE.test(existsError.message)) {
@@ -104,13 +145,21 @@ export async function runVerification({ db, tables = FORGE_TABLES }) {
         results.push({ table, ok: false, permission: true, errorMessage: existsError.message });
         continue;
       }
-      // Table exists but has no id (migration applied with a different
-      // shape) — report it as a column gap, not a hard failure.
+      // Table exists but the probe column is missing (migration applied with
+      // a different shape) — report it as a column gap, not a hard failure.
       if (MISSING_COLUMN_RE.test(existsError.message)) {
-        results.push({ table, ok: false, missingColumns: ['id'], errorMessage: existsError.message });
+        results.push({ table, ok: false, missingColumns: [probeColumn], errorMessage: existsError.message });
         continue;
       }
-      throw new Error(`verifySchema: forge.${table} existence check failed: ${existsError.message}`);
+      // Newer tables have no id column (github_connections) and PostgREST
+      // may pass the raw PG error through instead of a PGRST204 — the probe
+      // column above IS the first required column, so this is only reachable
+      // when the first required column itself is missing.
+      if (extractMissingColumn(existsError.message)) {
+        results.push({ table, ok: false, missingColumns: [probeColumn], errorMessage: existsError.message });
+        continue;
+      }
+      throw new Error(`verifySchema: orgforge.${table} existence check failed: ${existsError.message}`);
     }
 
     // 2. Column presence. PGRST204 names ONE missing column per request, so
@@ -126,7 +175,7 @@ export async function runVerification({ db, tables = FORGE_TABLES }) {
         colsError = error;
         break;
       }
-      const missing = MISSING_COLUMN_RE.exec(error.message)?.[1];
+      const missing = extractMissingColumn(error.message);
       if (!missing) {
         colsError = error;
         break;
@@ -143,7 +192,7 @@ export async function runVerification({ db, tables = FORGE_TABLES }) {
         results.push({ table, ok: false, permission: true, errorMessage: colsError.message });
         continue;
       }
-      throw new Error(`verifySchema: forge.${table} column check failed: ${colsError.message}`);
+      throw new Error(`verifySchema: orgforge.${table} column check failed: ${colsError.message}`);
     }
     if (missingColumns.length > 0) {
       results.push({ table, ok: false, missingColumns, errorMessage: `missing: ${missingColumns.join(', ')}` });
@@ -170,22 +219,22 @@ async function main() {
 
   const db = createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
-    db: { schema: 'forge' }, // same forge-scoped client as the API (migration 008 / S-2)
+    db: { schema: 'orgforge' }, // same orgforge-scoped client as the API (migration 008 / S-2)
   });
 
-  console.log('🔍 Verifying Forge Supabase schema (forge.* — migration 008, S-2)...\n');
+  console.log('🔍 Verifying Forge Supabase schema (orgforge.* — migrations 008 + 011–014)...\n');
 
   const { ok, results } = await runVerification({ db });
 
   for (const r of results) {
     if (r.ok) {
-      console.log(`✅ forge.${r.table} — ${r.checked}/${r.expected} required columns present`);
+      console.log(`✅ orgforge.${r.table} — ${r.checked}/${r.expected} required columns present`);
     } else if (r.permission) {
       console.error(
-        `❌ forge.${r.table} — PERMISSION DENIED (${r.errorMessage}). If the table exists, grants are missing: GRANT USAGE,SELECT,INSERT,UPDATE,DELETE ON forge.* TO anon, authenticated, service_role`
+        `❌ orgforge.${r.table} — PERMISSION DENIED (${r.errorMessage}). If the table exists, grants are missing: GRANT USAGE,SELECT,INSERT,UPDATE,DELETE ON orgforge.* TO anon, authenticated, service_role`
       );
     } else if (r.missingColumns?.length) {
-      console.error(`❌ forge.${r.table} — missing column(s): ${r.missingColumns.join(', ')} (${r.errorMessage})`);
+      console.error(`❌ orgforge.${r.table} — missing column(s): ${r.missingColumns.join(', ')} (${r.errorMessage})`);
     } else {
       console.error(`❌ forge.${r.table} — MISSING (${r.errorMessage})`);
     }
@@ -197,14 +246,14 @@ async function main() {
 
   console.log('\n--- Schema Verification Result ---');
   if (ok) {
-    console.log(`🎉 All ${tableCount} forge.* tables exist with all required columns — schema is ready!`);
+    console.log(`🎉 All ${tableCount} orgforge.* tables exist with all required columns — schema is ready!`);
     process.exit(0);
   }
-  console.error(`⚠️  ${issueCount} of ${tableCount} forge.* tables have issues.`);
+  console.error(`⚠️  ${issueCount} of ${tableCount} orgforge.* tables have issues.`);
   if (allMissing) {
-    console.error('   → forge schema absent: apply supabase/migrations/008_forge_schema.sql via Supabase MCP (S-2), then re-run.');
+    console.error('   → orgforge schema absent: apply supabase/migrations/008_forge_schema.sql via Supabase MCP (S-2), then re-run.');
   } else {
-    console.error('   → missing tables: re-apply 008 (it is idempotent) · permission: add grants · missing columns: check the migration version.');
+    console.error('   → missing tables: re-apply 008 / 011 / 013 (idempotent) · permission: add grants (013 ships them) · missing columns: check the migration version (chat_sessions → 012, change_records → 014).');
   }
   process.exit(1);
 }

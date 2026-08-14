@@ -57,7 +57,7 @@ export default function TemplatesPage() {
       id: 'agent',
       title: 'Agent templates',
       kicker: 'BUILD',
-      description: 'Fully-scoped briefs for building Agentforce agents — with the edge cases baked in.',
+      description: 'Fully-scoped briefs for building Agentforce agents, with the edge cases baked in.',
       icon: Bot,
       iconBg: 'bg-brand-blue-light border-brand-blue/15',
       iconColor: 'text-brand-blue',
@@ -67,7 +67,7 @@ export default function TemplatesPage() {
       id: 'change',
       title: 'Change & audit templates',
       kicker: 'GOVERN',
-      description: 'Governed org changes and audit requests — guarded, reviewed, and signed before deploy.',
+      description: 'Governed org changes and audit requests, guarded, reviewed, and signed before deploy.',
       icon: ShieldCheck,
       iconBg: 'bg-emerald-50 border-emerald-200/60',
       iconColor: 'text-emerald-600',
@@ -87,14 +87,14 @@ export default function TemplatesPage() {
             <h1 className="text-2xl md:text-3xl font-bold text-brand-dark tracking-tight">Templates</h1>
           </div>
           <p className="mt-1 text-slate-500">
-            High-quality starting points for the Copilot — pick one, review it, and make it yours in chat.
+            High-quality starting points for the Copilot. Pick one, review it, and make it yours in chat.
           </p>
         </div>
         <Link
           href="/chat"
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue text-white text-sm font-semibold shadow-glow hover:bg-brand-blue-hover transition-colors"
         >
-          <Sparkles className="w-4 h-4" /> Ask OrgForge
+          <Sparkles className="w-4 h-4" /> Ask Forge
         </Link>
       </div>
 

@@ -36,9 +36,6 @@ let ConversationManager;
 let sfClient;
 let generateMockData;
 let testAgent;
-let saveLog;
-let fetchActiveLessons;
-let analyzeSingleFailure;
 
 before(async () => {
   // Dynamic import AFTER env is set — module-scope code (genAI construction)
@@ -46,13 +43,8 @@ before(async () => {
   const mod = await import('../agentforge/services/aiOrchestrator.js');
   ConversationManager = mod.ConversationManager;
   sfClient = (await import('../agentforge/services/salesforceClient.js')).default;
-  // aiOrchestrator's other module-scope imports (all named) — asserting each
-  // binding here catches a port that turned a named export into a default (or
-  // lost the body entirely, as the `export { }` bug did during the port).
   ({ generateMockData } = await import('../agentforge/services/mockDataGenerator.js'));
   ({ testAgent } = await import('../agentforge/services/agentTester.js'));
-  ({ saveLog, fetchActiveLessons } = await import('../agentforge/services/logService.js'));
-  ({ analyzeSingleFailure } = await import('../agentforge/services/judgeService.js'));
 });
 
 describe('ported agentforge modules — offline instantiation smoke', () => {
@@ -79,8 +71,5 @@ describe('ported agentforge modules — offline instantiation smoke', () => {
     assert.equal(typeof sfClient.retrieveAgent, 'function');
     assert.equal(typeof generateMockData, 'function'); // { generateMockData } from mockDataGenerator.js
     assert.equal(typeof testAgent, 'function'); // { testAgent } from agentTester.js
-    assert.equal(typeof saveLog, 'function'); // { saveLog, fetchActiveLessons } from logService.js
-    assert.equal(typeof fetchActiveLessons, 'function');
-    assert.equal(typeof analyzeSingleFailure, 'function'); // { analyzeSingleFailure } from judgeService.js
   });
 });

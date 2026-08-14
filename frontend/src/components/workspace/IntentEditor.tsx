@@ -68,8 +68,8 @@ export default function IntentEditor({
           <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2">
             <RotateCcw className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
             <span>
-              <strong>Refining your previous intent.</strong> Your original prompt is preserved below —
-              edit it to disambiguate, then re-parse. A fresh intent record will be created.
+              <strong>Refining your previous intent.</strong> Your original prompt is preserved below.
+              Edit it to disambiguate, then re-parse. A fresh intent record will be created.
             </span>
           </div>
         )}

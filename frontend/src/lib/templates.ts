@@ -49,7 +49,7 @@ export const AGENT_TEMPLATES: ForgeTemplate[] = [
     kind: 'agent',
     title: 'Customer Support Agent',
     description:
-      'An always-on agent that answers FAQs, checks order status, and resolves account issues — and knows when to hand off to a human.',
+      'An always-on agent that answers FAQs, checks order status, and resolves account issues, and knows when to hand off to a human.',
     prompt:
       'Build a Customer Support Agent for my org. It should handle three jobs: (1) answer frequently-asked questions about products, shipping, and returns from our knowledge base; (2) look up order status, tracking, and order history; (3) resolve simple account issues like updating contact details or resetting a portal password. Design it with these edge cases explicitly handled: ask for the customer\u2019s email or order number before pulling any personal data, and never expose another customer\u2019s data; if the account is not found or the details don\u2019t match, say so clearly and offer a verification step instead of guessing; for anything involving refunds, cancelations, or payment-sensitive changes, escalate to a human with a short summary of what was tried; if the customer repeats the same question or expresses frustration, switch to an empathetic tone and offer a human handoff; if a question is out of scope (billing disputes, legal, sales), route it to the right team instead of answering from memory. End with a handoff path that captures the conversation context so the human agent doesn\u2019t have to start over.',
     tags: ['FAQ', 'Order status', 'Escalation'],

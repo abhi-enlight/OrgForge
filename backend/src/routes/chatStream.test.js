@@ -12,8 +12,8 @@ function fakeEngines() {
   const calls = { agent: [], org: [] };
   const agent = {
     isBusy: () => false,
-    async runAgent({ message, accessToken, instanceUrl, sessionKey, onEvent }) {
-      calls.agent.push({ message, accessToken, instanceUrl, sessionKey });
+    async runAgent({ message, accessToken, instanceUrl, sessionKey, resume, onEvent }) {
+      calls.agent.push({ message, accessToken, instanceUrl, sessionKey, resume });
       onEvent({ type: 'status', content: 'agent working' });
       return { role: 'assistant', content: 'Agent done.' };
     },
@@ -94,7 +94,15 @@ function sessionRecorderDb() {
       return {
         select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => {
           if (!row) return { data: null, error: null };
-          return { data: { capability_segments: row.capability_segments, compressed_history: row.compressed_history }, error: null };
+          return {
+            data: {
+              capability_segments: row.capability_segments,
+              compressed_history: row.compressed_history,
+              transcript: row.transcript,
+              context_summary: row.context_summary,
+            },
+            error: null,
+          };
         } }) }) }) }),
         insert: async (r) => {
           row = { ...r, capability_segments: JSON.parse(r.capability_segments) };
@@ -614,6 +622,7 @@ test('credential refresh failure → 401 reconnect message (EC-10)', async () =>
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(res.statusCode, 401);
   assert.ok(res.body.error.includes('Reconnect this org'));
+  assert.equal(res.body.code, 'ORG_RECONNECT_REQUIRED', 'discriminator: not a session-auth 401');
 });
 
 test('org connection missing → 404', async () => {
@@ -1067,6 +1076,98 @@ test('clarify turn appends a clarify segment', async () => {
   assert.equal(segs[0].capability, 'clarify');
   assert.equal(segs[0].engineRef, 'router');
   assert.equal(frames(res.chunks).at(-1), '[DONE]');
+});
+
+// ── durable context memory (context-memory pass) ────────────────────────────
+
+test('agent turn persists its transcript; the next turn resumes it from the spine', async () => {
+  const db = sessionRecorderDb();
+  const resumeSeen = [];
+  let turn = 0;
+  const agent = {
+    isBusy: () => false,
+    async runAgent({ resume, onEvent }) {
+      resumeSeen.push(resume);
+      onEvent({ type: 'status', content: 'working' });
+      turn += 1;
+      return {
+        role: 'assistant',
+        content: 'Agent done.',
+        context: {
+          turns: [
+            { role: 'user', text: `user turn ${turn}` },
+            { role: 'model', text: `assistant turn ${turn}` },
+          ],
+          summary: null,
+        },
+      };
+    },
+    abort() {},
+  };
+  const { router } = makeRouter({ db, agent });
+
+  invokeRouter(router, { body: { message: 'first', orgId: ORG, capability: 'agent', sessionId: 'sess-mem1' } });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(resumeSeen[0], { turns: [], summary: null }, 'no memory yet on the first turn');
+  assert.equal(JSON.parse(db.sessions[0].transcript).length, 2, 'transcript persisted');
+
+  invokeRouter(router, { body: { message: 'second', orgId: ORG, capability: 'agent', sessionId: 'sess-mem1' } });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(resumeSeen[1].turns.length, 2, 'resumed the previous turn');
+  assert.equal(resumeSeen[1].turns[0].text, 'user turn 1');
+  assert.equal(JSON.parse(db.sessions[0].transcript).length, 2, 'second snapshot replaces the first');
+});
+
+test('org_change turn receives a prior-context digest of THIS session only', async () => {
+  const db = sessionRecorderDb();
+  const orgCalls = [];
+  const org = {
+    async runOrgChange({ priorContext, onEvent }) {
+      orgCalls.push(priorContext);
+      onEvent({ type: 'status', content: 'org working' });
+      onEvent({ type: 'message', content: 'Org change queued.' });
+      return { role: 'assistant', content: 'Org done.' };
+    },
+  };
+  const { router } = makeRouter({ db, org });
+
+  // A prior agent turn populates the spine.
+  invokeRouter(router, { body: { message: 'build an agent', orgId: ORG, capability: 'agent', sessionId: 'sess-mem2' } });
+  await new Promise((r) => setTimeout(r, 10));
+  invokeRouter(router, {
+    body: { message: 'add a validation rule', orgId: ORG, capability: 'org_change', sessionId: 'sess-mem2' },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+
+  assert.equal(orgCalls.length, 1);
+  assert.ok(orgCalls[0], 'digest provided');
+  assert.ok(orgCalls[0].includes('[agent]'), 'digest names the earlier agent segment');
+  assert.ok(!orgCalls[0].includes('add a validation rule'), 'digest excludes the current turn');
+});
+
+test('context memory: a missing spine degrades to an empty resume (never fails the chat)', async () => {
+  const db = {
+    from: (table) => {
+      if (table === 'routing_log') return { insert: async () => ({ error: null }) };
+      return {
+        select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => {
+          return { data: null, error: { message: "Could not find the table 'forge.chat_sessions' in schema cache" } };
+        } }) }) }) }),
+        insert: async () => ({ error: { message: "Could not find the table 'forge.chat_sessions' in schema cache" } }),
+        update: () => ({ eq: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }) }),
+      };
+    },
+  };
+  const engines = fakeEngines();
+  const { router } = makeRouter({ db, engines });
+  const { res } = invokeRouter(router, {
+    body: { message: 'build an agent', orgId: ORG, capability: 'agent', sessionId: 's4' },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(engines.calls.agent.length, 1, 'agent still runs');
+  assert.deepEqual(engines.calls.agent[0].resume, { turns: [], summary: null }, 'empty resume on missing table');
+  const f = frames(res.chunks);
+  assert.equal(f.at(-1), '[DONE]', 'missing spine table never fails the stream');
 });
 
 test('no sessionId → segments key to the default session', async () => {

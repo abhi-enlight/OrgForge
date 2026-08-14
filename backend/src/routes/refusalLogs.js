@@ -73,7 +73,7 @@ export function createRefusalLogsRouter({
         if (isMissingTableError(error)) {
           return res.json({
             refusals: [],
-            note: 'Refusal audit trail unavailable — the legacy audit tables may not be migrated yet (OrgForge migrations 003–005, plan S-3).',
+            note: 'Refusal audit trail unavailable. The legacy audit tables may not be migrated yet (OrgForge migrations 003–005, plan S-3).',
           });
         }
         throw new Error(`Refusal log read failed: ${error.message}`);

@@ -1,10 +1,26 @@
 -- 008_forge_schema.sql
--- Forge unified schema (plan §9). ADDITIVE: creates the `forge` schema and
--- its tables; nothing here drops or modifies the legacy `public` / `orgforge`
--- tables. Run AFTER the OrgForge 001–007 migrations in the shared project.
+-- Forge unified schema (plan §9). ADDITIVE: creates the `orgforge` schema and
+-- its tables; nothing here drops or modifies the legacy `public` tables. Run
+-- AFTER the OrgForge 001–007 migrations in the shared project.
 -- Idempotent: safe to run multiple times.
+--
+-- NOTE: the schema was renamed from `forge` to `orgforge` (unified codebase
+-- rename). Environments that already applied the earlier 008 as `forge` are
+-- migrated in place below — the old schema is renamed to `orgforge` when
+-- `orgforge` does not already exist.
 
-CREATE SCHEMA IF NOT EXISTS forge;
+CREATE SCHEMA IF NOT EXISTS orgforge;
+
+-- One-time compatibility: rename an already-applied `forge` schema to
+-- `orgforge` (skipped when `orgforge` already exists — e.g. both present from
+-- a partial run — or when `forge` was never created).
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'forge')
+       AND NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'orgforge') THEN
+        ALTER SCHEMA forge RENAME TO orgforge;
+    END IF;
+END $$;
 
 -- ============================================================
 -- Org Connections — the single connection store (plan §9.1, D4)
@@ -14,7 +30,7 @@ CREATE SCHEMA IF NOT EXISTS forge;
 -- `legacy_agentforge_user_id` records the pre-merge identity after the
 -- re-link flow (§8.4) for audit. `disconnected_at` is set by EC-10 when a
 -- token refresh fails (revoked app access).
-CREATE TABLE IF NOT EXISTS forge.org_connections (
+CREATE TABLE IF NOT EXISTS orgforge.org_connections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,                            -- auth.users.id
     org_id VARCHAR(18) NOT NULL,
@@ -31,13 +47,13 @@ CREATE TABLE IF NOT EXISTS forge.org_connections (
     UNIQUE(user_id, org_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_forge_org_connections_user ON forge.org_connections(user_id);
+CREATE INDEX IF NOT EXISTS idx_forge_org_connections_user ON orgforge.org_connections(user_id);
 
 -- ============================================================
 -- Agents — inventory cache powering the read-only /agents page
 -- ============================================================
 -- Populated from sfClient.getAgents + deploy_agent events (plan §9.1, D6).
-CREATE TABLE IF NOT EXISTS forge.agents (
+CREATE TABLE IF NOT EXISTS orgforge.agents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
     org_id VARCHAR(18) NOT NULL,
@@ -52,12 +68,12 @@ CREATE TABLE IF NOT EXISTS forge.agents (
     UNIQUE(user_id, org_id, developer_name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_forge_agents_org ON forge.agents(org_id);
+CREATE INDEX IF NOT EXISTS idx_forge_agents_org ON orgforge.agents(org_id);
 
 -- ============================================================
 -- Chat Sessions — the shared context spine across engines (§7.3)
 -- ============================================================
-CREATE TABLE IF NOT EXISTS forge.chat_sessions (
+CREATE TABLE IF NOT EXISTS orgforge.chat_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id TEXT NOT NULL,                          -- client-generated conversation key (plan §7.3)
     user_id UUID NOT NULL,
@@ -72,7 +88,7 @@ CREATE TABLE IF NOT EXISTS forge.chat_sessions (
 -- ============================================================
 -- Routing Log — every classifier decision (§7.4)
 -- ============================================================
-CREATE TABLE IF NOT EXISTS forge.routing_log (
+CREATE TABLE IF NOT EXISTS orgforge.routing_log (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID,
     prompt_hash TEXT NOT NULL,
@@ -85,7 +101,7 @@ CREATE TABLE IF NOT EXISTS forge.routing_log (
 -- ============================================================
 -- Diagnostics — server-side pre-flight cache (§12.4.7, EC-21)
 -- ============================================================
-CREATE TABLE IF NOT EXISTS forge.diagnostics (
+CREATE TABLE IF NOT EXISTS orgforge.diagnostics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
     org_id VARCHAR(18) NOT NULL,
@@ -103,7 +119,7 @@ CREATE TABLE IF NOT EXISTS forge.diagnostics (
 -- latency_ms, model_version) and OrgForge's orgforge.ai_logs (intent_id,
 -- dry_run_errors, ai_repair_attempts). The unified writer is
 -- packages/ai/src/aiLogs.js — fire-and-forget, never blocks a request.
-CREATE TABLE IF NOT EXISTS forge.ai_logs (
+CREATE TABLE IF NOT EXISTS orgforge.ai_logs (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID,
     org_id VARCHAR(18),
@@ -123,50 +139,50 @@ CREATE TABLE IF NOT EXISTS forge.ai_logs (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_forge_ai_logs_user ON forge.ai_logs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_forge_ai_logs_user ON orgforge.ai_logs(user_id, created_at DESC);
 
 -- ============================================================
 -- Row-Level Security — mirror OrgForge's proven policies (§9.2)
 -- ============================================================
-ALTER TABLE forge.org_connections ENABLE ROW LEVEL SECURITY;
-ALTER TABLE forge.agents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE forge.chat_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE forge.routing_log ENABLE ROW LEVEL SECURITY;
-ALTER TABLE forge.diagnostics ENABLE ROW LEVEL SECURITY;
-ALTER TABLE forge.ai_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orgforge.org_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orgforge.agents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orgforge.chat_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orgforge.routing_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orgforge.diagnostics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orgforge.ai_logs ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "forge users own connections" ON forge.org_connections;
-CREATE POLICY "forge users own connections"
-ON forge.org_connections FOR ALL
+DROP POLICY IF EXISTS "orgforge users own connections" ON orgforge.org_connections;
+CREATE POLICY "orgforge users own connections"
+ON orgforge.org_connections FOR ALL
 USING (auth.uid()::text = user_id::text)
 WITH CHECK (auth.uid()::text = user_id::text);
 
-DROP POLICY IF EXISTS "forge users own agents" ON forge.agents;
-CREATE POLICY "forge users own agents"
-ON forge.agents FOR ALL
+DROP POLICY IF EXISTS "orgforge users own agents" ON orgforge.agents;
+CREATE POLICY "orgforge users own agents"
+ON orgforge.agents FOR ALL
 USING (auth.uid()::text = user_id::text)
 WITH CHECK (auth.uid()::text = user_id::text);
 
-DROP POLICY IF EXISTS "forge users own chat sessions" ON forge.chat_sessions;
-CREATE POLICY "forge users own chat sessions"
-ON forge.chat_sessions FOR ALL
+DROP POLICY IF EXISTS "orgforge users own chat sessions" ON orgforge.chat_sessions;
+CREATE POLICY "orgforge users own chat sessions"
+ON orgforge.chat_sessions FOR ALL
 USING (auth.uid()::text = user_id::text)
 WITH CHECK (auth.uid()::text = user_id::text);
 
-DROP POLICY IF EXISTS "forge users own routing log" ON forge.routing_log;
-CREATE POLICY "forge users own routing log"
-ON forge.routing_log FOR ALL
+DROP POLICY IF EXISTS "orgforge users own routing log" ON orgforge.routing_log;
+CREATE POLICY "orgforge users own routing log"
+ON orgforge.routing_log FOR ALL
 USING (auth.uid()::text = user_id::text)
 WITH CHECK (auth.uid()::text = user_id::text);
 
-DROP POLICY IF EXISTS "forge users own diagnostics" ON forge.diagnostics;
-CREATE POLICY "forge users own diagnostics"
-ON forge.diagnostics FOR ALL
+DROP POLICY IF EXISTS "orgforge users own diagnostics" ON orgforge.diagnostics;
+CREATE POLICY "orgforge users own diagnostics"
+ON orgforge.diagnostics FOR ALL
 USING (auth.uid()::text = user_id::text)
 WITH CHECK (auth.uid()::text = user_id::text);
 
-DROP POLICY IF EXISTS "forge users own ai logs" ON forge.ai_logs;
-CREATE POLICY "forge users own ai logs"
-ON forge.ai_logs FOR ALL
+DROP POLICY IF EXISTS "orgforge users own ai logs" ON orgforge.ai_logs;
+CREATE POLICY "orgforge users own ai logs"
+ON orgforge.ai_logs FOR ALL
 USING (auth.uid()::text = user_id::text)
 WITH CHECK (auth.uid()::text = user_id::text);

@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { supabaseAdmin } from './supabaseClient.js';
+import { supabaseAdmin } from '../../lib/supabaseClients.js';
 import { metadataTransport } from './metadataTransport.js';
 
 const ROLLBACK_BUCKET = 'orgforge-rollbacks';

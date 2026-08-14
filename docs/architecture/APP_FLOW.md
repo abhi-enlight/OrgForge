@@ -71,7 +71,7 @@ Step 3  "Connect GitHub audit log (optional)?"
    *Copilot carries a "Chat" badge — the primary destination.
 ```
 
-- **Org pill** — global active-org context (React context + localStorage) shared by both engines; type-aware icon (Production ⚡ / Sandbox ☁ / Scratch 🧪); switching orgs **confirms first** and clears in-flight chat context (EC-25).
+- **Org pill** — global active-org context (React context + localStorage) shared by both engines; type-aware icon (Production ⚡ / Sandbox ☁ / Scratch 🧪); switching orgs **confirms first** and clears in-flight chat context (EC-25). The org list itself is owned by the shared `ActiveOrgProvider`: fetched at most once per tab session and restored from a sessionStorage cache on full page loads (refresh in the same tab does **not** re-fetch `/api/v1/orgs`); Settings pulls fresh via `refreshOrgs()` after connect/disconnect.
 - **Avatar menu** — profile (email) + Sign out.
 - **Mobile** — hamburger → slide-over drawer (`md:` static sticky sidebar; Escape/backdrop closes; focus-managed).
 - **Org connections live in Settings + the pill** — deliberately not a top-level page (fewer items = simpler).
@@ -170,6 +170,10 @@ SSE stream (unified envelope, \n\n-delimited, [DONE] terminator)
 
 Auto-scroll to the latest frame; if the user scrolls up, pinning stops the auto-scroll; a "scroll to bottom" affordance appears.
 
+### 5.7 Access gate (connector package)
+
+Before the composer renders, the Copilot verifies the OrgForge Connector package is installed in the active org via the shared `OrgPackageHealthProvider` (layout-level — one check per org per page session, Redis-cached 10 min server-side; re-check on demand). While `status ≠ installed` a full-page `PackageRequiredGate` replaces the chat: `checking`/`idle` → "Checking org setup…" spinner · `missing` → 3-step install card (install link + copy for IT, grant user access, re-check) · `error` → reconnect/retry. The same gate covers `/agents` (§6.1); the dashboard surfaces the same condition as a non-blocking diagnostics banner instead (§7).
+
 ---
 
 ## 6. Supporting pages
@@ -177,6 +181,8 @@ Auto-scroll to the latest frame; if the user scrolls up, pinning stops the auto-
 ### 6.1 Agents (`/agents`) — read-only list
 
 `GET /api/v1/agents` → name, description, status, last deployed (cached server-side). Row action: **Open in chat to update** (deep-link with a starter prompt). Detail drawer shows the agent YAML.
+
+Gated on the shared package-health state like the Copilot (§5.7): the page renders the `PackageRequiredGate` install card when the connector package is missing (the inventory route can't run without it), and the agents fetch is suppressed until the gate resolves so a re-check after installing loads fresh. When the package **is** installed but agent building is still unavailable (Agentforce/Einstein settings, Einstein license, provisioning), an amber readiness row names the exact blocker instead — the read-only list stays usable.
 
 ### 6.2 Changes & Audit (`/changes`)
 
@@ -213,6 +219,7 @@ forge.diagnostics (server-side 24h cache, promise dedup)
   ├─ attention(missing_package) ─► banner "Install package" + re-check
   │     └ package.installed=false is NEVER pinned (Pass 22):
   │       row cleared → every read re-checks → self-heals after install
+  │       (chat/agents additionally gate on package-health — §5.7)
   ├─ attention(license/provisioning/disconnected) ─► banner + one action
   └─ error ──────────────────────► banner + Retry
 

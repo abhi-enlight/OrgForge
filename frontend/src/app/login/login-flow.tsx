@@ -66,6 +66,35 @@ async function hasConnectedOrgs(): Promise<boolean> {
 }
 
 /**
+ * Maps the OAuth callback error codes the backend redirects with (auth.js
+ * /salesforce/callback) to actionable copy — errors now land on
+ * /login?step=2&error=... so the connect screen itself explains the failure.
+ */
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  MissingAuthData:
+    'Salesforce returned an incomplete connection response. Please retry connecting your org.',
+  InvalidOrExpiredState:
+    'The connection request expired. Please retry connecting your org.',
+  DatabaseError:
+    'Your org connected, but saving it to the vault failed. Please retry the connection.',
+  ExchangeFailed:
+    'Salesforce rejected the connection handshake (invalid or revoked credentials). Please retry.',
+};
+
+/**
+ * Only same-origin relative paths are safe to follow after sign-in — the
+ * proxy sets redirectTo to an internal pathname; a hand-crafted absolute URL
+ * (https://evil.com) or protocol-relative // must never be honored.
+ */
+function safeInternalRedirect(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith('/')) return null;
+  if (raw.startsWith('//')) return null;
+  if (/[\\:\x00-\x1f]/.test(raw)) return null; // no backslash, scheme, or control chars
+  return raw;
+}
+
+/**
  * 3-step onboarding (§12.2): sign in (Supabase) → connect Salesforce
  * (Production/Sandbox/Scratch OAuth) → ready, optional GitHub.
  */
@@ -74,6 +103,9 @@ export default function LoginFlow() {
   const searchParams = useSearchParams();
   const requestedStep = Number(searchParams.get('step')) || 1;
   const oauthError = searchParams.get('error');
+  // Friendly copy for the OAuth callback error codes (raw codes fall through
+  // to the code itself so the user still sees something actionable).
+  const oauthErrorMessage = oauthError ? OAUTH_ERROR_MESSAGES[oauthError] || oauthError : null;
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [fullName, setFullName] = useState('');
@@ -86,6 +118,16 @@ export default function LoginFlow() {
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connectedOrgName, setConnectedOrgName] = useState<string | null>(null);
   const [checkingOrgs, setCheckingOrgs] = useState(false);
+  // Scratch orgs authenticate on their OWN instance URL, which the user must
+  // paste — the backend rejects a scratch connect without instanceUrl.
+  const [scratchUrl, setScratchUrl] = useState('');
+  const [scratchOpen, setScratchOpen] = useState(false);
+  const [scratchError, setScratchError] = useState<string | null>(null);
+  // Step 3 GitHub status: when GitHub is already connected, "Skip for now"
+  // is hidden — an already-set audit destination has nothing left to skip
+  // (the Go to dashboard CTA remains). null = unknown while the status loads;
+  // the skip button only renders once we know GitHub is NOT connected.
+  const [githubConnected, setGithubConnected] = useState<boolean | null>(null);
 
   // Recover position: signed-in users jump past step 1; ?step=2/3 (from the
   // header / connect CTA) jumps straight to that step.
@@ -97,7 +139,7 @@ export default function LoginFlow() {
         return;
       }
       const connected = await hasConnectedOrgs();
-      if (connected) {
+      if (connected && requestedStep !== 2) {
         setStep(3);
         router.replace('/login?step=3');
       } else {
@@ -107,9 +149,14 @@ export default function LoginFlow() {
   }, [requestedStep, router]);
 
   // After the Salesforce OAuth round-trip lands back here, detect the new org
-  // and advance to step 3 automatically.
+  // and advance to step 3 automatically. Skipped when the user explicitly
+  // navigated to /login?step=2 (reconnect intent): there they came to see the
+  // Production/Sandbox/Scratch buttons, so an existing org row must NOT be
+  // auto-detected as "already connected" — that would replace the connect
+  // buttons with a "Connected — Continue" panel and make re-linking a dead
+  // org impossible.
   useEffect(() => {
-    if (step !== 2 || connectedOrgName) return;
+    if (step !== 2 || connectedOrgName || requestedStep === 2) return;
     let cancelled = false;
     const poll = async () => {
       setCheckingOrgs(true);
@@ -133,7 +180,26 @@ export default function LoginFlow() {
       clearInterval(timer);
       clearTimeout(stop);
     };
-  }, [step, connectedOrgName]);
+  }, [step, connectedOrgName, requestedStep]);
+
+  // Step 3 (ready): reflect a pre-existing GitHub connection so "Skip for
+  // now" can be hidden — an already-connected audit destination has nothing
+  // to skip. Mirrors the shared GithubConnectCard status fetch.
+  useEffect(() => {
+    if (step !== 3) return;
+    let cancelled = false;
+    apiFetch<{ connected: boolean }>('/api/v1/auth/github/status')
+      .then((s) => {
+        if (!cancelled) setGithubConnected(!!s?.connected);
+      })
+      .catch(() => {
+        // Status unavailable — fall back to showing the skip button.
+        if (!cancelled) setGithubConnected(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step]);
 
   const signIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,6 +228,17 @@ export default function LoginFlow() {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw new Error(error.message);
       await linkLegacyOnce(); // EC-02 — one-time re-link, then destroy the token
+
+      // The proxy bounces unauthenticated users to /login?redirectTo=<path>;
+      // after sign-in, send them back where they were heading instead of
+      // dropping them on the onboarding step. Only same-origin paths are
+      // accepted (safeInternalRedirect), never external URLs.
+      const redirectTo = safeInternalRedirect(searchParams.get('redirectTo'));
+      if (redirectTo) {
+        router.replace(redirectTo);
+        return;
+      }
+
       const connected = await hasConnectedOrgs();
       setStep(connected ? 3 : 2);
     } catch (err) {
@@ -171,13 +248,13 @@ export default function LoginFlow() {
     }
   };
 
-  const startConnect = async (orgType: 'production' | 'sandbox' | 'scratch') => {
+  const startConnect = async (orgType: 'production' | 'sandbox' | 'scratch', instanceUrl?: string) => {
     setConnecting(orgType);
     setConnectError(null);
     try {
       const { authUrl } = await apiFetch<{ authUrl: string; state: string }>('/api/v1/auth/salesforce/connect', {
         method: 'POST',
-        body: JSON.stringify({ orgType }),
+        body: JSON.stringify({ orgType, ...(instanceUrl ? { instanceUrl } : {}) }),
       });
       if (!authUrl) throw new Error('No OAuth URL returned');
       window.location.assign(authUrl);
@@ -188,6 +265,31 @@ export default function LoginFlow() {
     } finally {
       setConnecting(null);
     }
+  };
+
+  // Scratch orgs authenticate on their own instance URL (there is no
+  // login.salesforce.com for them) — the user pastes it, it's validated
+  // client-side with the same rule the backend enforces, then the OAuth
+  // connect starts with instanceUrl included.
+  const startScratchConnect = async () => {
+    const url = scratchUrl.trim();
+    if (!/^https?:\/\/\S+\.salesforce\.com$/i.test(url)) {
+      setScratchError('Enter the scratch org instance URL, e.g. https://xxx-dev-ed.scratch.my.salesforce.com');
+      return;
+    }
+    setScratchError(null);
+    await startConnect('scratch', url);
+  };
+
+  const handleOrgTypeClick = (orgType: 'production' | 'sandbox' | 'scratch') => {
+    if (orgType === 'scratch') {
+      // Ask for the instance URL first instead of failing on the backend.
+      setScratchOpen(true);
+      setConnectError(null);
+      return;
+    }
+    setScratchOpen(false);
+    startConnect(orgType);
   };
 
   const Steps = [1, 2, 3];
@@ -224,9 +326,9 @@ export default function LoginFlow() {
           ))}
         </div>
 
-        {oauthError && (
+        {oauthErrorMessage && (
           <div className="mb-6 rounded-xl border border-brand-refused/30 bg-brand-refused-bg px-4 py-3 text-sm text-brand-refused animate-fade-in">
-            Salesforce sign-in failed: {oauthError}
+            Salesforce sign-in failed: {oauthErrorMessage}
           </div>
         )}
 
@@ -303,7 +405,7 @@ export default function LoginFlow() {
             </button>
 
             <p className="text-sm text-slate-500 text-center">
-              {isSignUp ? 'Already have an account?' : "New to OrgForge?"}{' '}
+              {isSignUp ? 'Already have an account?' : "New to Forge?"}{' '}
               <button
                 type="button"
                 onClick={() => setIsSignUp((v) => !v)}
@@ -321,7 +423,7 @@ export default function LoginFlow() {
             <div>
               <h2 className="font-semibold text-brand-dark">Connect Salesforce</h2>
               <p className="text-sm text-slate-500 mt-0.5">
-                Pick the org type. OrgForge signs you in with Salesforce and checks everything else in the background.
+                Pick the org type. Forge signs you in with Salesforce and checks everything else in the background.
               </p>
             </div>
 
@@ -348,7 +450,7 @@ export default function LoginFlow() {
                       key={type.id}
                       type="button"
                       disabled={!!connecting}
-                      onClick={() => startConnect(type.id)}
+                      onClick={() => handleOrgTypeClick(type.id)}
                       className="group flex items-center gap-3.5 rounded-xl border border-brand-border px-4 py-3.5 text-left hover:border-brand-blue/40 hover:shadow-soft transition-[border-color,box-shadow] disabled:opacity-60 cursor-pointer"
                     >
                       <span className="w-9 h-9 rounded-xl bg-brand-blue-light flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
@@ -366,6 +468,49 @@ export default function LoginFlow() {
                     </button>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Scratch orgs need their own instance URL before OAuth can
+                start — collect it inline, then connect. */}
+            {scratchOpen && (
+              <div className="rounded-xl border border-brand-border bg-brand-surface/40 p-4 space-y-3 animate-fade-in">
+                <p className="text-sm font-medium text-brand-dark">Scratch org instance URL</p>
+                <input
+                  type="url"
+                  value={scratchUrl}
+                  onChange={(e) => setScratchUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      startScratchConnect();
+                    }
+                  }}
+                  placeholder="https://xxx-dev-ed.scratch.my.salesforce.com"
+                  className="w-full rounded-xl border border-brand-border px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue/50 transition-shadow"
+                />
+                {scratchError && <p className="text-sm text-brand-refused">{scratchError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={startScratchConnect}
+                    disabled={connecting === 'scratch'}
+                    className="inline-flex items-center gap-2 rounded-xl bg-brand-blue text-white text-sm font-semibold px-5 py-2.5 shadow-glow hover:bg-brand-blue-hover transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {connecting === 'scratch' && <Loader2 className="w-4 h-4 animate-spin" />}
+                    Connect scratch org
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScratchOpen(false);
+                      setScratchError(null);
+                    }}
+                    className="rounded-xl border border-brand-border bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-brand-surface transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
 
@@ -404,7 +549,7 @@ export default function LoginFlow() {
                 <Check className="w-6 h-6 text-brand-pass" />
               </span>
               <h2 className="font-semibold text-brand-dark">You&apos;re all set</h2>
-              <p className="text-sm text-slate-500 mt-1">Ask OrgForge to build an agent or make an org change.</p>
+              <p className="text-sm text-slate-500 mt-1">Ask Forge to build an agent or make an org change.</p>
             </div>
 
             <div className="rounded-xl border border-brand-border bg-brand-surface/50 p-4">
@@ -422,15 +567,19 @@ export default function LoginFlow() {
               </div>
 
               {/* Real install → repo picker → connect flow (§12.3) — shared with Settings */}
-              <GithubConnectCard variant="card" />
+              <GithubConnectCard variant="card" onConnected={() => setGithubConnected(true)} />
 
-              <button
-                type="button"
-                onClick={() => router.push('/dashboard')}
-                className="mt-3 w-full rounded-lg border border-brand-border bg-white text-sm font-medium py-2 hover:bg-brand-surface transition-colors cursor-pointer"
-              >
-                Skip for now
-              </button>
+              {/* When GitHub is already connected there's nothing left to skip —
+                  hide the link (the Go to dashboard CTA remains). */}
+              {githubConnected === false && (
+                <button
+                  type="button"
+                  onClick={() => router.push('/dashboard')}
+                  className="mt-3 w-full rounded-lg border border-brand-border bg-white text-sm font-medium py-2 hover:bg-brand-surface transition-colors cursor-pointer"
+                >
+                  Skip for now
+                </button>
+              )}
             </div>
 
             <button
@@ -444,7 +593,7 @@ export default function LoginFlow() {
         )}
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          OrgForge · Enlight Lab · {new Date().getFullYear()}
+          Forge · Enlight Lab · {new Date().getFullYear()}
         </p>
       </div>
     </div>

@@ -61,7 +61,7 @@ npm run build:web / lint:web / typecheck:web
 - **Routes:** `src/routes/` — `chatStream.js` (SSE), `chatRoute.js` (classifier), `chatContext.js` (DELETE reset), `agents.js`, `diagnostics.js`, `linkLegacy.js`; capability routers are **first-class in-repo modules** — `src/orgforge/routes/*` (9 routers, auth rebased on `@forge/auth`) and `src/agentforge/routes/*` (legacy aliases) — all native ESM since Pass 32 (the one-folder port; no `../OrgForge`/`../Agentforge` references).
 - **Engines:** `src/engines/` — `agentEngine.js` (ConversationManager over Gemini + Salesforce tools), `orgEngine.js` (governed change pipeline).
 - **Lib:** `src/lib/` — `redisConversations.js` (Redis conversation store + busy-lock), `chatSessions.js` (session spine), `sseEmitter.js` (unified envelope), `fileAttachments.js` (multer + extract + `buildImageParts`).
-- **Key deps:** express 5, ioredis, zod, multer, pdf-parse, mammoth, cors, helmet, morgan, dotenv, express-session (transition only — deleted in Phase 5).
+- **Key deps:** express 5, ioredis, zod, multer, pdf-parse, mammoth, cors, helmet, morgan, dotenv.
 - **Auth wiring:** `@forge/auth` `requireAuth` + `tenantIsolation` middleware; Supabase JWT verified server-side via `supabase.auth.getUser`; dev sessions in localStorage, **production uses httpOnly Secure cookies (D2)**.
 
 ## 4. Frontend (`frontend/` — Next.js 16 App Router)
@@ -69,7 +69,7 @@ npm run build:web / lint:web / typecheck:web
 - **App routes (8 pages):** `/` (redirect → `/dashboard`) · `/login` (+ `login-flow.tsx`, 3-step onboarding) · `/(app)/dashboard` · `/(app)/chat` · `/(app)/agents` · `/(app)/changes` · `/(app)/settings` (+ `settings-flow.tsx`) · `/(app)/workspace`.
 - **Shell:** `components/layout/` — `AppShell.tsx`, `Header.tsx` (org pill + switcher, avatar), `Sidebar.tsx` (5 items, mobile drawer).
 - **Chat:** `components/chat/` — `MessageBubble`, `Markdown`, `CodeBlock`, `BuildProgressCard` (per-segment), `OrgChangeCard`, `CapabilityChip`, `StarterCards`.
-- **Client libs:** `lib/api.ts` (`apiFetch` — JWT, timeouts 45s/120s, `ApiError` with zod issues, 401 → /login) · `lib/chat-stream.ts` (`streamChat` SSE reader + multipart, `resetChatSession`) · `lib/supabase.ts` · `lib/org-context.tsx` (active-org context) · `lib/flags.ts` (canary) · `lib/utils.ts` (cn).
+- **Client libs:** `lib/api.ts` (`apiFetch` — JWT, timeouts 45s/120s, `ApiError` with zod issues, 401 → /login) · `lib/chat-stream.ts` (`streamChat` SSE reader + multipart, `resetChatSession`) · `lib/supabase.ts` · `lib/org-context.tsx` (`ActiveOrgProvider` — active-org context **plus the shared org-list fetch**: once per tab session, sessionStorage cache, `refreshOrgs()` for fresh pulls) · `lib/orgReadiness.tsx` (`OrgReadinessProvider` — one diagnostics preflight per org per page session, shared by the sign-in banner, chat chip, Agents row, dashboard tile) · `lib/orgHealth.tsx` (`OrgPackageHealthProvider` — one package-health check per org per page session; gates `/chat` + `/agents` via `PackageRequiredGate`) · `lib/flags.ts` (canary) · `lib/utils.ts` (cn).
 - **Auth gate:** `components/auth/AuthGate.tsx`.
 - **Styling:** Tailwind v4 — token definitions live in `src/app/globals.css` `@theme` (see DESIGN.md); Inter (UI) + Fira Code (mono) via `next/font`.
 - **Proxying:** `next.config.ts` rewrites `/api/*` → the unified backend (`:3001`).
@@ -83,12 +83,24 @@ npm run build:web / lint:web / typecheck:web
 | `@forge/diagnostics` | pre-flight port (license / package-by-SubscriberPackageId / provisioning / org-type), server-side 24h cache + promise dedup, `invalidateDiagnostics` (EC-14), package-missing never-pin (Pass 22) | — |
 | `@forge/org-connections` | encrypted credential store (`iv:authTag:encryptedData`, AES-256-GCM), per-org refresh dedup, legacy re-link (RPC-backed) | jsonwebtoken |
 
-## 6. Data layer (Supabase — one project, unified `forge` schema)
+## 6. Data layer (Supabase — one project, strict `orgforge` schema isolation)
 
-- Legacy: Agentforge `public` + `orgforge.*` schemas (same project). Unified: `forge.*` schema via migrations numbered **008+** (after OrgForge's 001–007).
-- **Migration 008** (`forge` schema): `org_connections` (+ `capabilities`, `legacy_agentforge_user_id`, `disconnected_at`), `agents` inventory cache, `chat_sessions`, `routing_log`, `diagnostics`.
-- **Migration 010**: legacy re-link RPCs (`get_connections_by_agentforge_user`, `delete_salesforce_connection_by_user`).
-- **Planned:** 009 (compat views), 011 (RLS — mirror OrgForge's `auth.uid() = user_id`).
+- **Strict isolation (Pass 51):** all app data lives in the `orgforge` schema;
+  every client defaults to `db: { schema: 'orgforge' }`
+  (`lib/supabaseClients.js`, `tenantIsolation`, orgforge jobs' `supabaseAdmin`).
+  `public` is untouched for legacy data only (`reLink.js` reads it explicitly).
+- **Migrations 008–013** (all applied live via MCP, Passes 43 + 51): 008
+  (`org_connections` + `capabilities`/`legacy_agentforge_user_id`/`disconnected_at`,
+  `agents` cache, `chat_sessions`, `routing_log`, `diagnostics` + RLS), 010
+  (re-link RPCs), 011 (`orgforge.github_connections`), 012 (chat memory
+  columns `transcript`/`context_summary`), 013 (`change_records`, `org_indexes`,
+  `ai_lessons`, `deployments`, `change_sets` + RLS + a self-contained GRANT
+  block).
+- **Durable conversation memory:** every agent turn persists a bounded
+  text-only transcript + flash-compressed summary to `orgforge.chat_sessions`;
+  cold starts resume from summary + recent verbatim tail; the org engine gets
+  the bounded `priorContext` digest. Session rows are garbage-collected by the
+  nightly `session-cleanup` job (`CHAT_SESSIONS_RETENTION_DAYS`, default 7).
 - **S-2 semantics everywhere:** missing-table errors (migration 008 pending) degrade gracefully (uncached runs, 503 `/health/db`); **any other DB error fails loudly** — a real bug must surface, not be swallowed.
 - **Service-role client pattern:** every query passes the verified `user_id` explicitly (tenantIsolation); **RLS is never a backstop** on service-role clients.
 
@@ -100,7 +112,7 @@ npm run build:web / lint:web / typecheck:web
 
 ## 8. AI architecture
 
-- **One classifier, one envelope** (`@forge/ai`): `routeIntent` decides `agent | org_change | both | clarify` with Gemini + deterministic overrides; capability chip pins bypass the classifier; every decision → `forge.routing_log`.
+- **One classifier, one envelope** (`@forge/ai`): `routeIntent` decides `agent | org_change | both | clarify` with Gemini + deterministic overrides; capability chip pins bypass the classifier; every decision → `orgforge.routing_log`.
 - **Agent engine:** legacy Agentforge ConversationManager (Gemini chat session, ~24 Salesforce tools, ReAct loop) with a pre-init guard for image-parts arrays on fresh sessions (Pass 21).
 - **Org engine:** governed pipeline — intent → blast radius → refusal gates (REF-01..10) → dry-run → deploy → HMAC-signed record; image attachments described by `describeImage` and injected as document text.
 - **Model:** Gemini — key `GOOGLE_AI_API_KEY` (canonical; legacy `GEMINI_API_KEY` still honored), model `GEMINI_MODEL || gemini-2.5-flash`.
@@ -116,5 +128,5 @@ npm run build:web / lint:web / typecheck:web
 
 - **Dev:** `npm run dev:api` + `npm run dev:web`; `.env.example` at root + `frontend/.env.example` — **canonical env names** (SALESFORCE_*, GOOGLE_AI_API_KEY, SUPABASE_SERVICE_ROLE_KEY, FORGE_* flags) with legacy Agentforge/OrgForge aliases honored as fallbacks; `JWT_SECRET` retired (Pass 36).
 - **Prod:** Next.js on Vercel + Express API on Render; Supabase hosted Postgres; Redis (managed).
-- **Feature flags:** `FORGE_UNIFIED_API=on` (capability routers), `FORGE_MOUNT_AGENTFORGE=on` (legacy aliases `/api/auth`, `/api/org` — deleted Phase 5), `FORGE_UNIFIED_FRONTEND` (canary chip), `FORGE_ECA_PACKAGE_VERSION_ID` (package check override).
-- **Rollout (D5):** zero-downtime — legacy apps stay deployed and serving; 301 old domains after the new domain is proven; decommission only after Phase-5 soak + sign-off.
+- **Feature flags:** `FORGE_UNIFIED_API=on` (capability routers), `FORGE_UNIFIED_FRONTEND` (canary chip), `FORGE_ECA_PACKAGE_VERSION_ID` (package check override).
+- **Rollout (D5):** zero-downtime — the legacy apps were decommissioned (deploys stopped 2026-08-14; aliases + transition env vars removed); remaining: 301 old domains after the new domain is proven, then the legacy-schema drop (S-8) after soak + sign-off.

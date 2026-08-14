@@ -40,7 +40,7 @@ ALTER TABLE public.salesforce_connections ADD COLUMN IF NOT EXISTS token_expires
 
 -- NOTE: this legacy table intentionally has NO row-level security. It is only
 -- ever accessed via the RPCs below (service-role paths), mirroring Agentforge's
--- original design. The unified forge.org_connections table (008) carries the
+-- original design. The unified orgforge.org_connections table (008) carries the
 -- real RLS posture; the legacy surface is retired at Phase 5.
 
 -- Agentforge's original RPCs (created in the SQL editor) may or may not exist;

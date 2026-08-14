@@ -24,7 +24,7 @@ const STARTERS = [
   {
     id: 'validation-rule',
     title: 'Add a validation rule',
-    description: 'Governed org change — a rule that rejects invalid data at save time.',
+    description: 'Governed org change: a rule that rejects invalid data at save time.',
     prompt:
       'Add a validation rule to the Opportunity object that prevents closing deals above $1M without an approved business case.',
     icon: ShieldCheck,
@@ -33,7 +33,7 @@ const STARTERS = [
   {
     id: 'field-permissions',
     title: 'Permission set update',
-    description: 'Governed org change — adjust field-level security on a permission set.',
+    description: 'Governed org change: adjust field-level security on a permission set.',
     prompt:
       "Create a permission set assignment giving my support team read-write access to the Case Status field, then show me the blast radius.",
     icon: Workflow,

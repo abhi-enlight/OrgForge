@@ -244,29 +244,44 @@ class SalesforceClient {
         `SELECT Id FROM InstalledSubscriberPackage WHERE SubscriberPackageId = '${packageId}' LIMIT 1`,
         apiVersion
       );
-      const installed = Array.isArray(records) && records.length > 0;
+      const packageFound = Array.isArray(records) && records.length > 0;
 
       // ECA presence is a BEST-EFFORT signal, not part of the verdict:
       // ExternalClientApplication is a setup/metadata entity that is not
       // guaranteed to be queryable through every API surface, so a failure
       // here must never flip an otherwise-verified result into 'error'.
-      // Query via the Tooling API (same surface as the package query) and
-      // swallow per-org incompatibilities with a warning.
+      // IMPORTANT: it must be queried via the STANDARD REST query endpoint —
+      // ExternalClientApplication is NOT a Tooling object, so a Tooling query
+      // returns 400 INVALID_TYPE "sObject type not supported" in every real
+      // org and the fallback could never match. Swallow per-org
+      // incompatibilities with a warning.
       // undefined = "unchecked", not "absent": a successful query sets a
       // boolean, so callers can tell "ECA genuinely missing" from "couldn't
       // verify" instead of a misleading false.
       let ecaPresent;
       try {
-        const ecaRecords = await this.queryTooling(
-          accessToken,
-          instanceUrl,
-          `SELECT Id, DeveloperName FROM ExternalClientApplication WHERE DeveloperName = '${ecaName}' LIMIT 1`,
-          apiVersion
-        );
+        const url = `${instanceUrl}/services/data/v${apiVersion}/query?q=${encodeURIComponent(
+          `SELECT Id, DeveloperName FROM ExternalClientApplication WHERE DeveloperName = '${ecaName}' LIMIT 1`
+        )}`;
+        const ecaResponse = await axios.get(url, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        const ecaRecords = ecaResponse.data?.records || [];
         ecaPresent = Array.isArray(ecaRecords) && ecaRecords.length > 0;
       } catch (ecaErr) {
         console.warn('[salesforceClient] ECA presence check unavailable (non-fatal):', ecaErr.message);
       }
+
+      // Installed = managed package row present OR the External Client App
+      // exists. The ECA is the signal that actually matters — it is the OAuth
+      // client Forge authenticates through, and it exists in exactly the orgs
+      // where the connector was set up. This closes the false "missing"
+      // verdicts that happen when (a) the connector is installed as an
+      // UNMANAGED package (never listed in InstalledSubscriberPackage) or
+      // (b) the pinned SubscriberPackageId/version ids don't match the version
+      // the admin actually installed. A successful query that finds neither is
+      // a genuine 'missing'.
+      const installed = packageFound || ecaPresent === true;
 
       return installed
         ? { status: 'installed', ecaPresent }

@@ -4,6 +4,7 @@ import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
 const requireAuth = createAuthMiddleware();
 import { githubService } from '../services/githubService.js';
 import { redisConnection } from '../jobs/queue.js';
+import { isMissingTableError } from '../../lib/isMissingTable.js';
 
 const router = express.Router();
 
@@ -184,6 +185,21 @@ router.get('/status', async (req, res) => {
       connectedAt: data?.created_at || null
     });
   } catch (err) {
+    // A missing github_connections table (migration not applied yet) must
+    // read as "no GitHub connected", not a 500 — this endpoint runs on the
+    // login/settings pages automatically, and a 500 here used to surface as
+    // a scary "Failed to load GitHub status" on every sign-in. Any other DB
+    // failure still fails loudly.
+    if (isMissingTableError(err)) {
+      console.warn('[github] github_connections table missing — reporting disconnected:', err.message);
+      return res.json({
+        connected: false,
+        installationId: null,
+        repoOwner: null,
+        repoName: null,
+        connectedAt: null
+      });
+    }
     console.error('Failed to fetch GitHub status:', err.message);
     res.status(500).json({ error: 'Failed to fetch GitHub connection status' });
   }

@@ -64,6 +64,22 @@ if (orgForgeEnabled) {
   } catch (err) {
     console.warn('Failed to register nightly self-improvement job (non-fatal):', err.message);
   }
+
+  // Daily chat_sessions expiry sweep (03:05, after the self-improvement run):
+  // deletes spine rows idle longer than CHAT_SESSIONS_RETENTION_DAYS (default
+  // 7) — orphaned by closed tabs, since session ids live in sessionStorage.
+  try {
+    const { sessionCleanupQueue } = await import('./orgforge/jobs/queue.js');
+    await sessionCleanupQueue.add('session-cleanup', {}, {
+      jobId: 'session-cleanup',
+      repeat: { pattern: '5 3 * * *' },
+      removeOnComplete: true,
+      removeOnFail: 100,
+    });
+    console.log('Scheduled session-cleanup job (03:05 daily, chat_sessions expiry).');
+  } catch (err) {
+    console.warn('Failed to register session-cleanup job (non-fatal):', err.message);
+  }
 }
 
 const server = app.listen(PORT, () => {

@@ -1,6 +1,7 @@
 'use client';
 
 import { supabase, getAccessToken } from './supabase';
+import { ORG_RECONNECT_REQUIRED } from './api';
 
 /**
  * Unified SSE event envelope (§10.2) — Agentforge's `type` vocabulary plus
@@ -54,6 +55,55 @@ export interface ChatStreamRequest {
 export interface ChatStreamOptions {
   onEvent: (event: SseEvent) => void;
   signal?: AbortSignal;
+}
+
+/** One row of the History picker (GET /api/v1/chat/sessions). */
+export interface SessionSummary {
+  sessionId: string;
+  updatedAt: string | null;
+  lastSummary: string | null;
+  hasSummary: boolean;
+}
+
+/** Full spine for resuming one conversation (GET /api/v1/chat/sessions/:id). */
+export interface SessionDetail {
+  sessionId: string;
+  transcript: { role: 'user' | 'model'; text: string }[];
+  contextSummary: string | null;
+  segments: { capability?: string; engineRef?: string; summary?: string }[];
+}
+
+/** Authenticated JSON GET for the session History/restore endpoints. */
+async function authGet<T>(path: string): Promise<T> {
+  const token = await getAccessToken();
+  const res = await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (typeof body?.error === 'string') message = body.error;
+    } catch {
+      /* non-JSON error body — keep the status message */
+    }
+    throw new Error(message);
+  }
+  return (await res.json()) as T;
+}
+
+/** Lists the user's past conversations for an org (resume-from-closed-tab). */
+export async function listChatSessions(orgId: string): Promise<SessionSummary[]> {
+  const data = await authGet<{ sessions: SessionSummary[] }>(
+    `/api/v1/chat/sessions?orgId=${encodeURIComponent(orgId)}`
+  );
+  return data.sessions ?? [];
+}
+
+/** Fetches one session's spine so the chat UI can rebuild the conversation. */
+export async function getChatSessionDetail(sessionId: string, orgId: string): Promise<SessionDetail> {
+  const data = await authGet<{ session: SessionDetail }>(
+    `/api/v1/chat/sessions/${encodeURIComponent(sessionId)}?orgId=${encodeURIComponent(orgId)}`
+  );
+  return data.session;
 }
 
 const STREAM_TIMEOUT_MS = 180_000; // engines can run long (agent build + deploy)
@@ -117,23 +167,28 @@ export async function streamChat(
     throw new Error(
       timedOut
         ? 'The request timed out. Please try again.'
-        : 'Unable to reach the OrgForge server. Check your connection and try again.'
+        : 'Unable to reach the Forge server. Check your connection and try again.'
     );
   }
 
   if (!res.ok) {
-    if (res.status === 401) {
+    let body: { error?: unknown; code?: string } | undefined;
+    try {
+      body = (await res.json()) as { error?: unknown; code?: string };
+    } catch {
+      /* non-JSON error body — keep the status message */
+    }
+    // A 401 with code ORG_RECONNECT_REQUIRED means the *Salesforce org*
+    // needs reconnecting (stored refresh token rejected) — the app session
+    // is still valid, so do NOT sign the user out. Only a session-auth 401
+    // (from the auth middleware, no code) expires the session.
+    if (res.status === 401 && body?.code !== ORG_RECONNECT_REQUIRED) {
       await supabase.auth.signOut();
       if (typeof window !== 'undefined') window.location.href = '/login';
       throw new Error('Session expired. Please sign in again.');
     }
     let message = `Request failed (${res.status})`;
-    try {
-      const body = (await res.json()) as { error?: unknown };
-      if (typeof body?.error === 'string') message = body.error;
-    } catch {
-      /* non-JSON error body — keep the status message */
-    }
+    if (typeof body?.error === 'string') message = body.error;
     throw new Error(message);
   }
 

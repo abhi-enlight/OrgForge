@@ -15,17 +15,24 @@ const BASE_OPTS = { auth: { persistSession: false, autoRefreshToken: false } };
  */
 export const forgeDb = createClient(url, key, {
   ...BASE_OPTS,
-  db: { schema: 'forge' },
+  db: { schema: 'orgforge' },
 });
 
 /**
- * Service-role Supabase client scoped to the DEFAULT (public) schema.
- * Used for: public.org_connections (the live OAuth credential store),
- * orgforge.* tables via the orgforge schema override in orgforge routes,
- * and the re-link flow that touches public.salesforce_connections.
+ * Service-role Supabase client scoped to the orgforge schema.
+ * All queries explicitly target `orgforge.*` tables to strictly isolate
+ * application data from the legacy `public` schema.
  *
- * NOTE: the authoritative credential store is public.org_connections — the
- * same table the OAuth callback and OrgForge routes write. Do NOT use
- * forgeDb for credential lookups (forge.org_connections is vestigial).
+ * NOTE: The legacy `public.org_connections` is no longer the authoritative
+ * credential store. All operations read/write strictly to `orgforge.org_connections`.
  */
-export const publicDb = createClient(url, key, BASE_OPTS);
+export const publicDb = createClient(url, key, {
+  ...BASE_OPTS,
+  db: { schema: 'orgforge' },
+});
+
+/**
+ * Backward-compatible alias for legacy orgforge services and jobs.
+ */
+export const supabaseAdmin = forgeDb;
+

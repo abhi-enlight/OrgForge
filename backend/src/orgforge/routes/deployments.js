@@ -7,7 +7,7 @@ import { streamLimiter } from '../middleware/rateLimiter.js';
 import { metadataTransport } from '../services/metadataTransport.js';
 import { changeRecordService } from '../services/changeRecordService.js';
 import { rollbackService } from '../services/rollbackService.js';
-import { getOrgCredentials } from '../services/orgCredentials.js';
+import { getOrgCredentials } from '@forge/org-connections';
 import { redisConnection, deploymentQueue } from '../jobs/queue.js';
 
 const router = express.Router();
@@ -68,6 +68,16 @@ const backupStatusSchema = z.object({
 function handleRouteError(res, err, fallback) {
   if (err instanceof z.ZodError) {
     return res.status(400).json({ error: 'Validation failed', issues: err.errors });
+  }
+  // getOrgCredentials throws 401 when the stored Salesforce refresh token is
+  // dead (EC-10) — discriminate it as ORG_RECONNECT_REQUIRED so the frontend
+  // shows a "Reconnect Salesforce" CTA instead of treating the bare 401 as a
+  // session expiry and signing the user out.
+  if (err.status === 401) {
+    return res.status(401).json({
+      error: 'Reconnect this org. Salesforce access could not be refreshed',
+      code: 'ORG_RECONNECT_REQUIRED',
+    });
   }
   const status = err.status || 500;
   // Server-class errors (>500) return the sanitized fallback so internal

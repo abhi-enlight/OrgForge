@@ -1500,7 +1500,7 @@ ${subagentsYaml}`;
           agentUserId = agentUserRes.data.records[0].Id;
           console.log(`[AUTH] Einstein Agent User resolved: ${agentUserId}`);
         } else {
-          const msg = 'Einstein Agent User not found — permission set assigned to Admin only. Run the Pre-Flight Diagnostic to provision the agent user.';
+          const msg = 'Einstein Agent User not found. Permission set assigned to Admin only. Run the Pre-Flight Diagnostic to provision the agent user.';
           console.warn('[AUTH]', msg);
           lastReason = msg;
         }
@@ -1535,7 +1535,7 @@ ${subagentsYaml}`;
       }
 
       if (!psId) {
-        return { success: false, reason: 'Agentforge_Generated_Actions permission set not found after 32s (metadata indexing lag). The permission set was deployed — please manually assign it in Salesforce Setup > Permission Sets.' };
+        return { success: false, reason: 'Agentforge_Generated_Actions permission set not found after 32s (metadata indexing lag). The permission set was deployed. Please manually assign it in Salesforce Setup > Permission Sets.' };
       }
 
       // ── STEP 3: Assign Agentforge_Generated_Actions to Admin + Agent User ─
