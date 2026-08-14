@@ -1,16 +1,16 @@
 @import "tailwindcss";
 
 /*
- * Forge design tokens (plan §6.5) — Tailwind v4 @theme.
+ * OrgForge design tokens (plan §6.5) — Tailwind v4 @theme.
  *
- * Forge's `brand-*` palette + shadows + fonts are mapped verbatim so
+ * OrgForge's `brand-*` palette + shadows + fonts are mapped verbatim so
  * component classes (bg-brand-blue-light, shadow-card-hover, …) keep working
  * during the transition. Semantic status colors (pass/refused/warning) come
- * from the same Forge spec. Fonts follow the legacy convention:
+ * from the same OrgForge spec. Fonts follow the legacy convention:
  * Inter (UI) + Fira Code (artifacts).
  */
 @theme {
-  /* Brand (Forge palette) */
+  /* Brand (OrgForge palette) */
   --color-brand-blue: #1a6bff;
   --color-brand-blue-hover: #0052e0;
   --color-brand-blue-light: #eef4ff;
@@ -155,7 +155,7 @@ body {
   }
 }
 
-/* Skeleton loading shimmer (ported from Forge for the 10-stage workspace) */
+/* Skeleton loading shimmer (ported from OrgForge for the 10-stage workspace) */
 /* Transform-only shimmer: the sweep runs on a ::after overlay animated with
    translateX (compositor-only), over a static base — no background-position
    paint on the 1.6s loop. Same timing and look as the original. */

@@ -1,7 +1,7 @@
 import { Worker } from 'bullmq';
 import { createRedisConnection } from './queue.js';
 import { supabaseAdmin } from '../../lib/supabaseClients.js';
-import { getOrgCredentials } from '@forge/org-connections';
+import { getOrgCredentials } from '@orgforge/org-connections';
 import { salesforceClient } from '../services/salesforceClient.js';
 import { isValidSfIdentifier } from '../utils/aiSafety.js';
 

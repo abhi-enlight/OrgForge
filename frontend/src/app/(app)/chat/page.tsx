@@ -17,8 +17,8 @@ import {
   type SessionSummary,
 } from '@/lib/chat-stream';
 import { supabase } from '@/lib/supabase';
-import { FORGE_UNIFIED_FRONTEND } from '@/lib/flags';
-import { classifyWithStub } from '@forge/ai/stubClassifier';
+import { ORGFORGE_UNIFIED_FRONTEND } from '@/lib/flags';
+import { classifyWithStub } from '@orgforge/ai/stubClassifier';
 import MessageBubble from '@/components/chat/MessageBubble';
 import OrgChangeCard from '@/components/chat/OrgChangeCard';
 import BuildProgressCard, { PROGRESS_TYPES, type ProgressStep } from '@/components/chat/BuildProgressCard';
@@ -27,7 +27,7 @@ import StarterCards from '@/components/chat/StarterCards';
 import PackageRequiredGate from '@/components/org/PackageRequiredGate';
 
 const GREETING =
-  "Hi, I'm Forge, your Salesforce copilot. Ask me to **build or update an agent**, or to make a **governed org change** (validation rules, permission sets, fields).";
+  "Hi, I'm OrgForge, your Salesforce copilot. Ask me to **build or update an agent**, or to make a **governed org change** (validation rules, permission sets, fields).";
 
 /** crypto.randomUUID is unavailable in non-secure contexts (http on LAN IP) — same fallback everywhere (review finding). */
 function makeId(): string {
@@ -105,11 +105,11 @@ export default function ChatPage() {
   const attachErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Canary-only (FORGE_UNIFIED_FRONTEND=on): the stub rule-based routing
+  // Canary-only (ORGFORGE_UNIFIED_FRONTEND=on): the stub rule-based routing
   // preview for the current draft — free, offline, zero AI calls (plan §14.2
   // Phase 1). Pure computation on the input, never sent to the server.
   const stubVerdict: StubVerdict | null = useMemo(
-    () => (FORGE_UNIFIED_FRONTEND && input.trim() ? classifyWithStub(input) : null),
+    () => (ORGFORGE_UNIFIED_FRONTEND && input.trim() ? classifyWithStub(input) : null),
     [input]
   );
 
@@ -541,11 +541,20 @@ export default function ChatPage() {
   // scrollHeight, clamped at max-h-40 (160px — the textarea's CSS cap). A
   // long prompt expands as it wraps instead of scrolling inside a one-line
   // box; clearing the input (send / reset) shrinks it back via the same path.
+  //
+  // scrollHeight includes the WRAPPED PLACEHOLDER: on narrow widths (e.g. a
+  // docked preview pane) the placeholder wraps to several lines, inflating
+  // the empty composer to its max so pasted templates show no growth. Measure
+  // with the placeholder suppressed so height tracks real content only.
   const resizeComposer = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    const placeholder = el.placeholder;
+    el.placeholder = '';
+    const contentHeight = el.scrollHeight;
+    el.placeholder = placeholder;
+    el.style.height = `${Math.min(contentHeight, 160)}px`;
   }, []);
 
   useEffect(() => {
@@ -660,7 +669,7 @@ export default function ChatPage() {
         <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-brand-border bg-white/60">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
             <Sparkles className="w-3.5 h-3.5 text-brand-blue" />
-            Forge Copilot
+            OrgForge Copilot
             <span className="hidden sm:inline text-slate-300">·</span>
             <span className="hidden sm:inline text-slate-400">{org.name}</span>
           </div>
@@ -826,7 +835,7 @@ export default function ChatPage() {
               disabled={isBuilding}
               disabledOptions={agentsUnavailable ? ['agent', 'both'] : []}
               disabledOptionsReason="Agent building isn't available in this org. Enable Agentforce Agent and Einstein in Setup → Agentforce"
-              canary={FORGE_UNIFIED_FRONTEND}
+              canary={ORGFORGE_UNIFIED_FRONTEND}
               stubVerdict={stubVerdict}
             />
           </div>
@@ -921,7 +930,7 @@ export default function ChatPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={1}
-              placeholder="Ask Forge to build an agent or make an org change…"
+              placeholder="Ask OrgForge to build an agent or make an org change…"
               className="flex-1 resize-none rounded-xl border border-brand-border bg-brand-surface/60 px-4 py-3 text-sm text-brand-dark placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue transition-shadow max-h-40"
               style={{ minHeight: 44 }}
             />

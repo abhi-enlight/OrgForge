@@ -177,7 +177,7 @@ export default function PackageRequiredGate({
               </h4>
               <p className="text-xs text-slate-500 leading-relaxed">
                 In <strong className="font-semibold text-slate-700">Setup → External Client App Manager</strong>, open{' '}
-                <em className="not-italic font-medium text-slate-700">Forge by Enlight Lab</em> and set{' '}
+                <em className="not-italic font-medium text-slate-700">OrgForge by Enlight Lab</em> and set{' '}
                 <strong className="font-semibold text-slate-700">Permitted Users</strong> to{' '}
                 <em className="not-italic font-medium text-slate-700">All users may self-authorize</em> (or assign the
                 admin-approved permission set).

@@ -1,7 +1,7 @@
-# Forge — Legacy PRD Compliance Audit
+# OrgForge — Legacy PRD Compliance Audit
 
 **Audit date:** 2026-08-11 · **Method:** requirements traced to code + tests + live endpoints (no mocks)
-**Scope:** OrgForge PRD v1.0 (`docs/legacy/OrgForge_PRD.md`) + Agentforge PRD v6.0 (`docs/legacy/Agentforge_PRD.md`) against the unified Forge implementation.
+**Scope:** OrgForge PRD v1.0 (`docs/legacy/OrgForge_PRD.md`) + Agentforge PRD v6.0 (`docs/legacy/Agentforge_PRD.md`) against the unified OrgForge implementation.
 **Evidence baseline:** backend suite **402/402 pass** (incl. the re-homed OrgForge service unit tests in `backend/src/orgforge`, Pass 34, and the offline agentforge instantiation smoke, Pass 35) · `frontend` tsc + lint green · live `/api/v1/health` + `/health/db` responding · servers running on `:3001` / `:3000`.
 
 **Docs set (one product):** [`unification_plan.md`](./unification_plan.md) (design) · [`DECISIONS.md`](./DECISIONS.md) (decisions) · [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) (tracker) · [`api_contract.md`](./api_contract.md) (frozen API) · [`PRD.md`](./PRD.md) (unified requirements) · [`API.md`](./API.md) (reference) · [`APP_FLOW.md`](./APP_FLOW.md) (flows) · [`TECH_STACK.md`](./TECH_STACK.md) (stack) · [`DESIGN.md`](./DESIGN.md) (design system) · [`PHASE5_PLAN.md`](./PHASE5_PLAN.md) (phase 5) · [`legacy/OrgForge_PRD.md`](./legacy/OrgForge_PRD.md) · [`legacy/Agentforge_PRD.md`](./legacy/Agentforge_PRD.md)
@@ -25,8 +25,8 @@
 
 The unified API is a **thin adapter over the legacy engines** (not a rewrite):
 
-- **Org Changes** — `backend/src/engines/orgEngine.js` drives OrgForge's services (`aiOrchestrator`, `skillResolver`, `impactAnalyzer`, `refusalGateEngine`, `metadataTransport`, `changeRecordService`) imported **natively from `backend/src/orgforge/`** (Pass 32 one-folder port); the full capability routers (`/api/v1/orgs`, `/changes`, `/impact`, `/gates`, `/deployments`, `/rollback`, `/change-records`, `/auth`, `/auth/github`) are mounted **verbatim from the ported tree** (`backend/src/app.js`, gated on `FORGE_UNIFIED_API=on`).
-- **Agents** — `backend/src/engines/agentEngine.js` wraps Agentforge's `ConversationManager` (ported CJS→ESM to `backend/src/agentforge/services/aiOrchestrator.js`, Pass 32 — `@forge/compat` retired); conversation state moved to Redis (plan §7.3).
+- **Org Changes** — `backend/src/engines/orgEngine.js` drives OrgForge's services (`aiOrchestrator`, `skillResolver`, `impactAnalyzer`, `refusalGateEngine`, `metadataTransport`, `changeRecordService`) imported **natively from `backend/src/orgforge/`** (Pass 32 one-folder port); the full capability routers (`/api/v1/orgs`, `/changes`, `/impact`, `/gates`, `/deployments`, `/rollback`, `/change-records`, `/auth`, `/auth/github`) are mounted **verbatim from the ported tree** (`backend/src/app.js`, gated on `ORGFORGE_UNIFIED_API=on`).
+- **Agents** — `backend/src/engines/agentEngine.js` wraps Agentforge's `ConversationManager` (ported CJS→ESM to `backend/src/agentforge/services/aiOrchestrator.js`, Pass 32 — `@orgforge/compat` retired); conversation state moved to Redis (plan §7.3).
 - **Diagnostics** — `packages/diagnostics` (preflight, 24h cache, EC-14 invalidation) is the unified port of Agentforge's org-health + OrgForge's package-health.
 
 That architecture is why PRD compliance is high: **the features are the legacy features, verified working, as first-class modules in one self-contained application** (no wrapper, no out-of-repo code — the legacy sibling repos were archived to `/Users/abhi/Enlight/archive/` on 2026-08-11, Pass 33).
@@ -63,7 +63,7 @@ That architecture is why PRD compliance is high: **the features are the legacy f
 
 ### 3.3 10-stage operator workflow
 
-| Stage | Where it lives in Forge | Status |
+| Stage | Where it lives in OrgForge | Status |
 |---|---|---|
 | 1. Connect & Index Org Context | `/api/v1/orgs` mount (OrgForge `indexOrgJob` + `org_indexes`; unified `GET /orgs/:orgId/status` + indexing SSE) | ✅ backend |
 | 2. Plain-Language Intent | chat org-change pipeline step 1 (`ai.parseIntent`) / OrgForge `POST /changes/intent` | ✅ |
@@ -165,8 +165,8 @@ That architecture is why PRD compliance is high: **the features are the legacy f
 | FR | Status | Notes |
 |---|---|---|
 | FR-1 Onboarding (3 steps + legacy re-link) | ✅ | `login-flow.tsx`: sign in → connect (PKCE, Production/Sandbox/Scratch) → optional GitHub ([Connect]/[Skip]); `POST /api/v1/auth/link-legacy` |
-| FR-2 Global shell | ✅ | sticky top bar, FORGE wordmark + Enlight logo, org pill (type-aware, confirm-on-switch), avatar menu, 5-item sidebar, mobile drawer |
-| FR-3 Dashboard | ✅ | hero **Ask Forge**, 3 stat tiles deep-linking to chat, one attention banner, activity feed, empty-state collapse |
+| FR-2 Global shell | ✅ | sticky top bar, ORGFORGE wordmark + Enlight logo, org pill (type-aware, confirm-on-switch), avatar menu, 5-item sidebar, mobile drawer |
+| FR-3 Dashboard | ✅ | hero **Ask OrgForge**, 3 stat tiles deep-linking to chat, one attention banner, activity feed, empty-state collapse |
 | FR-4 Copilot | ✅ | SSE stream, starter prompts, capability chip (Auto/Agents/Org Change/Both + pin), inline org-change cards, per-segment progress cards (`both`), file+image attach, Stop / Stop & reset / Clear, thinking dots, auto-scroll pinning, reset-confirmation pill |
 | FR-5 Supporting pages | ✅ | Agents + Changes + Settings + Workspace all render — the 10-stage workspace (Pass 26), CSV export (Pass 24), refusal-log view (Pass 25), Agents YAML drawer (Pass 27) and Settings-Advanced (Pass 28) are **fixed**; all §4 deltas closed |
 | FR-6 Diagnostics (org-health brain) | ✅ | one pre-flight, 24h cache + dedup, capability split (EC-16), state machine, one-banner rule, EC-14 both halves |

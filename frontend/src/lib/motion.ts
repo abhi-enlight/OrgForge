@@ -1,5 +1,5 @@
 /**
- * Forge motion tokens — the JS twin of the CSS motion tokens in
+ * OrgForge motion tokens — the JS twin of the CSS motion tokens in
  * globals.css (@theme --ease-spring). Framer-motion cannot consume CSS
  * variables, so these live here as the single source of truth. Never
  * hand-type a bezier in a component.

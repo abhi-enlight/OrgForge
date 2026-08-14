@@ -56,12 +56,32 @@ test('low confidence falls back to clarify (never guess, EC-24)', async () => {
   assert.equal(result.overrideSource, 'clarify');
 });
 
-test('classifier failure fails closed to clarify', async () => {
+test('classifier failure: unambiguous request routes via deterministic rules', async () => {
   const result = await routeIntent('build an agent', {
+    classifier: async () => { throw new Error('GOOGLE_AI_API_KEY missing'); },
+  });
+  assert.equal(result.capability, 'agent');
+  assert.equal(result.overrideSource, 'deterministic');
+  assert.ok(result.confidence >= 0.9, 'rule hit is trusted by the UI');
+  assert.match(result.reason, /Classifier unavailable/, 'reason records why the model path was skipped');
+});
+
+test('classifier failure: ambiguous request still fails closed to clarify', async () => {
+  const result = await routeIntent('hello', {
     classifier: async () => { throw new Error('GOOGLE_AI_API_KEY missing'); },
   });
   assert.equal(result.capability, 'clarify');
   assert.equal(result.overrideSource, 'clarify');
+});
+
+test('flaky model clarify is resolved by the deterministic rules (never stalls an obvious build)', async () => {
+  // Gemini can flakily answer "clarify" for a crystal-clear agent build request.
+  const result = await routeIntent('Build a Case Triage Agent that owns inbound support cases', {
+    classifier: async () => ({ capability: 'clarify', confidence: 0, reason: 'Request is ambiguous or unsafe' }),
+  });
+  assert.equal(result.capability, 'agent');
+  assert.equal(result.overrideSource, 'deterministic');
+  assert.match(result.reason, /deterministic rules resolved it/);
 });
 
 test('deterministic override does not fire when model already agrees (keeps model reason)', async () => {

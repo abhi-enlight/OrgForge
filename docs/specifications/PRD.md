@@ -1,6 +1,6 @@
-# Forge — Product Requirements Document (PRD)
+# OrgForge — Product Requirements Document (PRD)
 
-**Product:** Enlight Forge ("Forge")
+**Product:** Enlight OrgForge ("OrgForge")
 **Owner:** Enlight Lab
 **Version:** v1.0 (unified product)
 **Status:** Phases 1–4 code complete (backend **402/402** tests, `frontend` tsc/lint/build green); Phase 5 (canary/soak) pending
@@ -11,16 +11,16 @@
 
 ## 1. Product summary
 
-> **One conversational copilot for the whole Salesforce org.** Ask Forge to *"list all my agents"* and it reaches into Agentforce. Ask it to *"modify an Account layout"* and it opens a governed, refusal-gated change workflow. Building AI agents and safely changing the org are two skills of the **same assistant** — never two websites.
+> **One conversational copilot for the whole Salesforce org.** Ask OrgForge to *"list all my agents"* and it reaches into Agentforce. Ask it to *"modify an Account layout"* and it opens a governed, refusal-gated change workflow. Building AI agents and safely changing the org are two skills of the **same assistant** — never two websites.
 
-Forge is the unification of two sibling products:
+OrgForge is the unification of two sibling products:
 
-| Legacy product | What it did | Role inside Forge |
+| Legacy product | What it did | Role inside OrgForge |
 |---|---|---|
 | **Agentforge** (v6.4) | Build, deploy, and test Salesforce Agentforce agents from natural language | the **Agents** capability |
 | **OrgForge** (v1.0) | Governed, refusal-gated, fully-documented Salesforce org customization | the **Org Changes** capability |
 
-Both shared ~80% of their plumbing (Gemini AI, SSE streaming, OAuth to Salesforce, AES-GCM encrypted tokens, the same Supabase project). Forge merges them into **one frontend, one API, one auth system, one org-connection store, and one chat** that routes each request to the right engine without the user ever sensing two products.
+Both shared ~80% of their plumbing (Gemini AI, SSE streaming, OAuth to Salesforce, AES-GCM encrypted tokens, the same Supabase project). OrgForge merges them into **one frontend, one API, one auth system, one org-connection store, and one chat** that routes each request to the right engine without the user ever sensing two products.
 
 ### 1.1 One-liner by role
 
@@ -102,17 +102,17 @@ When a request spans both, capability `both` runs agent → org sequentially wit
 
 ### FR-2 Global shell
 
-- Sticky top bar: **FORGE** wordmark, live **org pill** (type-aware: Production/Sandbox/Scratch; global switcher with confirm on switch — EC-25), avatar menu (profile, sign out).
+- Sticky top bar: **ORGFORGE** wordmark, live **org pill** (type-aware: Production/Sandbox/Scratch; global switcher with confirm on switch — EC-25), avatar menu (profile, sign out).
 - Sidebar, 5 items: **Dashboard · Copilot · Agents · Changes & Audit · Settings**. Org connections live in Settings + the org pill — not a top-level page.
 - Mobile: hamburger → slide-over drawer (Escape / backdrop close).
 
 ### FR-3 Dashboard (the calm home)
 
-- One hero action: **Ask Forge** (deep-links to chat).
+- One hero action: **Ask OrgForge** (deep-links to chat).
 - Three clickable stat tiles → **Agents** (count + last deployed), **Open changes** (count + awaiting approval), **Audit trail** (recent record). Each deep-links into chat with a pre-filled prompt.
 - **One attention banner**, only when something is wrong (package missing / license unsupported / disconnected / indexing stale), with exactly one action.
 - One reverse-chronological **recent activity feed** (agent builds + org change records share one visual language).
-- Empty states collapse the page to a single CTA ("Connect Salesforce" / "Ask Forge to build your first agent" / "Request a governed change").
+- Empty states collapse the page to a single CTA ("Connect Salesforce" / "Ask OrgForge to build your first agent" / "Request a governed change").
 
 ### FR-4 Copilot (chat) — the center of everything
 

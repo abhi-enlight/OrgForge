@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
-import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
-import { routeIntent } from '@forge/ai';
+import { createAuthMiddleware, tenantIsolation } from '@orgforge/auth';
+import { routeIntent } from '@orgforge/ai';
 import { createHash } from 'node:crypto';
 
 const bodySchema = z.object({
@@ -11,7 +11,7 @@ const bodySchema = z.object({
 });
 
 // Module-level singleton scoped to the forge schema (routing_log lives there,
-// migration 008 / S-2). Same pattern as @forge/auth and diagnostics.
+// migration 008 / S-2). Same pattern as @orgforge/auth and diagnostics.
 const forgeDb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:54321',
   process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy_key',

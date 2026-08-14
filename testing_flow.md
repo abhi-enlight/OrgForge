@@ -282,7 +282,7 @@ Test the 3 intent paths with live SSE streaming:
 
 | # | Test Trigger | Expected Behavior |
 | :--- | :--- | :--- |
-| **A-1** | Call every `/api/v1/*` route with **no Authorization header** (orgs, agents, chat/route, chat/stream, diagnostics, change-records, refusal-logs, deployments, gates, impact, changes, chat/sessions, chat/:contextId). | HTTP **401** (JSON `{error: ...}`) from `@forge/auth` `requireAuth` — zero exceptions, no data leaked in the body. |
+| **A-1** | Call every `/api/v1/*` route with **no Authorization header** (orgs, agents, chat/route, chat/stream, diagnostics, change-records, refusal-logs, deployments, gates, impact, changes, chat/sessions, chat/:contextId). | HTTP **401** (JSON `{error: ...}`) from `@orgforge/auth` `requireAuth` — zero exceptions, no data leaked in the body. |
 | **A-2** | Same calls with a **garbage / expired / tampered JWT**. | HTTP **401** — `auth.getUser` must reject invalid signatures and expired tokens, not just missing ones. |
 | **A-3** | Health endpoints (`/api/v1/health`, `/api/v1/health/db`). | These are the **only** intentionally public routes (liveness/readiness probes) — verify they return 200 **without** leaking tenant data (no row counts, no org names). |
 

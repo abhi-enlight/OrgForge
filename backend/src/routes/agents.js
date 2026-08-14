@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
-import { getOrgCredentials } from '@forge/org-connections';
-import { validateInstanceUrl } from '@forge/diagnostics';
+import { createAuthMiddleware, tenantIsolation } from '@orgforge/auth';
+import { getOrgCredentials } from '@orgforge/org-connections';
+import { validateInstanceUrl } from '@orgforge/diagnostics';
 import { isMissingTableError } from '../lib/isMissingTable.js';
 import { forgeDb as forgeDbSingleton, publicDb as credsDbSingleton } from '../lib/supabaseClients.js';
 import salesforceClient from '../agentforge/services/salesforceClient.js';

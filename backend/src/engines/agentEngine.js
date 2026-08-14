@@ -35,7 +35,7 @@ const SERIALIZABLE_FIELDS = [
  * Agent engine adapter (plan §10.1, §7.3) — runs the Agentforce capability.
  *
  * Wraps Agentforge's `ConversationManager` — now a first-class module in this
- * repo (backend/src/agentforge, ported CJS->ESM; the @forge/compat loader is gone).
+ * repo (backend/src/agentforge, ported CJS->ESM; the @orgforge/compat loader is gone).
  * Conversation state moves to Redis (plan §7.3): the busy lock is a Redis
  * SET-NX-PX (correct 409 across instances) and the manager's serializable
  * snapshot persists after every turn (survives restarts). The live Gemini

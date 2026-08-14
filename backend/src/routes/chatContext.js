@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
+import { createAuthMiddleware, tenantIsolation } from '@orgforge/auth';
 import { agentEngine } from '../engines/agentEngine.js';
 import { forgeDb } from '../lib/supabaseClients.js';
 import { deleteChatSession, getChatSession, listChatSessions } from '../lib/chatSessions.js';

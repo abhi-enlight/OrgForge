@@ -200,7 +200,7 @@ export default function AmbiguityCard({
                 <span className="text-sm font-bold text-brand-dark">My intent is something else</span>
               </div>
               <p className="text-xs text-slate-600 pl-[26px] leading-relaxed mt-1">
-                Describe exactly what you want Forge to change, and the AI will generate metadata
+                Describe exactly what you want OrgForge to change, and the AI will generate metadata
                 from your resolution instead.
               </p>
             </button>

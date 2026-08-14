@@ -1,4 +1,4 @@
-# Forge schema migrations (Phase 3 — planned)
+# OrgForge schema migrations (Phase 3 — planned)
 
 These migrations consolidate both engines onto one `orgforge` schema inside the
 **same Supabase project** (plan §9). They are **additive**: nothing is dropped
@@ -13,7 +13,7 @@ legacy apps.
 
 > ⚠️ The OrgForge project's migrations live in
 > `../OrgForge/supabase/migrations/` (001–007) and were applied to the shared
-> project already. Forge migrations are numbered from **008** onward so they
+> project already. OrgForge migrations are numbered from **008** onward so they
 > apply cleanly after the OrgForge set.
 
 ## Migration order

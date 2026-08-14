@@ -62,7 +62,7 @@ The only learning loop is passive (nightly `selfImprovementJob` →
 | `dependency` | "This references metadata that must already exist in the org or be deployed in a specific order (e.g. a field used by a rule being added in the same batch)." | MDAPI validates against the *current* org state, not the post-deploy state |
 | `human_decision` | "This would affect existing data / behavior — the fix needs a human decision (e.g. which records are affected, whether to scope a rule to new records), not a code edit." | REF-05 class of judgment; MDAPI errors about required/data-dependent constraints |
 | `org_constraint` | "The org itself blocks this — managed package (REF-08), license, or access. I can't override the org's constraints." | Platform-level restriction, not a content error |
-| `unsupported` | "This operation isn't supported by the metadata types Forge can deploy." | `KNOWN_METADATA_TYPES` allowlist |
+| `unsupported` | "This operation isn't supported by the metadata types OrgForge can deploy." | `KNOWN_METADATA_TYPES` allowlist |
 | `unknown` | "I couldn't determine a fix and can't safely guess — the change was not deployed. Review the errors below or open the Advanced Workspace to edit the artifact." | Fallback |
 
 **Governance guardrail:** a repair is a **change to the change**. It must stay

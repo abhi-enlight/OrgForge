@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runVerification, FORGE_TABLES } from './verifySchema.mjs';
+import { runVerification, ORGFORGE_TABLES } from './verifySchema.mjs';
 
 const SAMPLE_TABLES = { agents: ['id', 'user_id', 'org_id', 'developer_name'] };
 
@@ -69,7 +69,7 @@ test('all tables present with all required columns → ok, per-table verdicts', 
   assert.equal(res.results[0].expected, 4);
 });
 
-test('full twelve-table set passes when every table exists (FORGE_TABLES shapes)', async () => {
+test('full twelve-table set passes when every table exists (ORGFORGE_TABLES shapes)', async () => {
   const db = makeFakeDb();
   const res = await runVerification({ db });
   assert.equal(res.ok, true);
@@ -89,22 +89,22 @@ test('missing table → classified missing, not ok, other tables still checked',
 
 test('github_connections (no id column) verifies clean — existence probe uses its first column', async () => {
   const db = makeFakeDb();
-  const res = await runVerification({ db, tables: { github_connections: FORGE_TABLES.github_connections } });
+  const res = await runVerification({ db, tables: { github_connections: ORGFORGE_TABLES.github_connections } });
 
   assert.equal(res.ok, true);
   assert.equal(res.results[0].table, 'github_connections');
-  assert.equal(res.results[0].checked, FORGE_TABLES.github_connections.length);
+  assert.equal(res.results[0].checked, ORGFORGE_TABLES.github_connections.length);
 });
 
 test('migration-012 memory columns are required on chat_sessions (transcript + context_summary)', () => {
   for (const col of ['transcript', 'context_summary']) {
-    assert.ok(FORGE_TABLES.chat_sessions.includes(col), `chat_sessions requires ${col}`);
+    assert.ok(ORGFORGE_TABLES.chat_sessions.includes(col), `chat_sessions requires ${col}`);
   }
 });
 
 test('migration-014 agent columns are required on change_records (kind + agent_snapshot)', () => {
   for (const col of ['kind', 'agent_name', 'agent_snapshot']) {
-    assert.ok(FORGE_TABLES.change_records.includes(col), `change_records requires ${col}`);
+    assert.ok(ORGFORGE_TABLES.change_records.includes(col), `change_records requires ${col}`);
   }
 });
 
@@ -186,19 +186,19 @@ test('empty tables config is rejected (no vacuous pass)', async () => {
   await assert.rejects(() => runVerification({ db, tables: {} }), /no tables configured/);
 });
 
-test('FORGE_TABLES exposes all twelve migration-008/011/013 tables with non-empty column lists', () => {
-  const names = Object.keys(FORGE_TABLES);
+test('ORGFORGE_TABLES exposes all twelve migration-008/011/013 tables with non-empty column lists', () => {
+  const names = Object.keys(ORGFORGE_TABLES);
   assert.deepEqual(names.sort(), [
     'agents', 'ai_lessons', 'ai_logs', 'change_records', 'change_sets',
     'chat_sessions', 'deployments', 'diagnostics', 'github_connections',
     'org_connections', 'org_indexes', 'routing_log',
   ]);
-  for (const cols of Object.values(FORGE_TABLES)) {
+  for (const cols of Object.values(ORGFORGE_TABLES)) {
     assert.ok(Array.isArray(cols) && cols.length > 0, 'each table lists required columns');
     assert.ok(typeof cols[0] === 'string' && cols[0].length > 0, 'each table has a probe column (first required column)');
   }
   // github_connections is the one table without an id column — the probe
   // falls back to its first column (user_id).
-  assert.ok(!FORGE_TABLES.github_connections.includes('id'));
-  assert.equal(FORGE_TABLES.github_connections[0], 'user_id');
+  assert.ok(!ORGFORGE_TABLES.github_connections.includes('id'));
+  assert.equal(ORGFORGE_TABLES.github_connections[0], 'user_id');
 });

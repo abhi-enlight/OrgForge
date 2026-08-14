@@ -213,7 +213,7 @@ function WorkspaceSkeleton() {
 }
 
 /**
- * Unified-app entry: the Forge shell mounted ToastProvider at the layout
+ * Unified-app entry: the OrgForge shell mounted ToastProvider at the layout
  * level; the unified `(app)` layout has no global provider, so the workspace
  * wraps itself so useToast() inside the 10-stage flow works unchanged.
  */
@@ -274,10 +274,20 @@ function WorkspaceFlow() {
   const [changeRecord, setChangeRecord] = useState<ChangeRecord | undefined>(undefined);
   const [selectedGateToUnblock, setSelectedGateToUnblock] = useState<GateResult | null>(null);
   const [isUnblockModalOpen, setIsUnblockModalOpen] = useState(false);
-  const [redirectNotice, setRedirectNotice] = useState<RedirectNotice | null>(null);
+  // Surface OAuth callback outcomes (?error= / ?success=true) the backend
+  // redirects with after the Salesforce round-trip. Read SYNCHRONOUSLY via
+  // lazy initializers so the notice and ECA popup render WITH the workspace
+  // on first paint instead of flashing in a tick later (mirrors the login
+  // flow's OAuth snapshot). The mount effect below scrubs the query string
+  // so a reload doesn't re-trigger the notice.
+  const [redirectNotice, setRedirectNotice] = useState<RedirectNotice | null>(
+    () => readRedirectNotice()
+  );
   // ECA-not-installed popup: auto-opens when the OAuth callback came back with
   // error=ECANotInstalled AND an install link (mirrors the login flow).
-  const [ecaInstallPopupOpen, setEcaInstallPopupOpen] = useState(false);
+  const [ecaInstallPopupOpen, setEcaInstallPopupOpen] = useState<boolean>(
+    () => !!readRedirectNotice()?.installUrl
+  );
 
   const queryOrgId = getQueryOrgId();
 
@@ -294,33 +304,20 @@ function WorkspaceFlow() {
     reopenModal: reopenPkgModal
   } = useOrgPackageHealthFor(selectedOrg?.id || queryOrgId || null);
 
-  // Surface OAuth callback outcomes (?error= / ?success=true) the backend
-  // redirects with after the Salesforce round-trip, then scrub the query
-  // string so the notice isn't re-shown on every reload. Deferred with a
-  // timeout so state isn't set synchronously inside the effect body.
+  // The callback params have already been consumed by the lazy initializers
+  // above (first paint), so scrub them now — a refresh must not re-trigger
+  // the notice or popup.
   useEffect(() => {
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      const notice = readRedirectNotice();
-      if (!notice || cancelled) return;
-      setRedirectNotice(notice);
-      if (notice.installUrl) setEcaInstallPopupOpen(true);
-      if (typeof window !== 'undefined') {
-        const url = new URL(window.location.href);
-        url.searchParams.delete('error');
-        url.searchParams.delete('success');
-        // ECA-not-installed params were consumed into the notice/popup — scrub
-        // them too so a refresh doesn't re-trigger the popup.
-        url.searchParams.delete('installUrl');
-        url.searchParams.delete('orgType');
-        url.searchParams.delete('instanceUrl');
-        window.history.replaceState({}, '', url.toString());
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    let changed = false;
+    for (const key of ['error', 'success', 'installUrl', 'orgType', 'instanceUrl']) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.delete(key);
+        changed = true;
       }
-    }, 0);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+    }
+    if (changed) window.history.replaceState({}, '', url.toString());
   }, []);
 
   // Authenticate + load the org list once.

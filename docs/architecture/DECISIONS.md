@@ -10,8 +10,8 @@ These decisions supersede the "open" status in the plan. Work may proceed on thi
 
 ---
 
-## D1. Product name — **"Forge" (Enlight Forge)**
-Confirmed. `Forge` is the product name; `Enlight Forge` is the full brand. Legacy capabilities live as internal feature names ("Agents", "Org Changes"). Rename user-visible strings only; keep code identifiers, schemas, routes, env vars, and package names unchanged (§2.2).
+## D1. Product name — **"OrgForge" (Enlight OrgForge)**
+Confirmed. `OrgForge` is the product name; `Enlight OrgForge` is the full brand. Legacy capabilities live as internal feature names ("Agents", "Org Changes"). Rename user-visible strings only; keep code identifiers, schemas, routes, env vars, and package names unchanged (§2.2).
 
 ## D2. Session storage — **httpOnly cookies in production** (plan recommendation)
 Move the Supabase session to httpOnly, SameSite=Lax, Secure cookies in production (kills the `localStorage.auth_token` XSS-theft vector). Dev keeps localStorage for parity. No `?token=` redirects; no `new_token` SSE event. Chat SSE uses JWT header (POST); query-string token only on GET/SSE where EventSource requires it (§8.1, §8.3).

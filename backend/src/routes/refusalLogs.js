@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { createAuthMiddleware } from '@forge/auth';
+import { createAuthMiddleware } from '@orgforge/auth';
 import { isMissingTableError } from '../lib/isMissingTable.js';
 import { publicDb as publicDbSingleton } from '../lib/supabaseClients.js';
 

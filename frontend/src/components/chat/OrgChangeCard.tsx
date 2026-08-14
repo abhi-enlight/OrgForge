@@ -83,7 +83,7 @@ function metricsOf(payload: unknown): Array<{ label: string; value: string | num
 /**
  * Inline org-change card (§6.3) — renders one of the unified SSE card payloads
  * (artifact / blast_radius / refusal_gates / dry_run / deploy / record) in the
- * Copilot conversation. Every payload renders a Forge-styled card; unknown
+ * Copilot conversation. Every payload renders a OrgForge-styled card; unknown
  * card types degrade to a simple summary card.
  */
 export default function OrgChangeCard({ msg }: { msg: ChatMessage }) {

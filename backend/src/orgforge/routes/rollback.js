@@ -1,9 +1,9 @@
 import express from 'express';
 import { z } from 'zod';
-import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
+import { createAuthMiddleware, tenantIsolation } from '@orgforge/auth';
 const requireAuth = createAuthMiddleware();
 import { rollbackService } from '../services/rollbackService.js';
-import { getOrgCredentials } from '@forge/org-connections';
+import { getOrgCredentials } from '@orgforge/org-connections';
 
 const router = express.Router();
 router.use(requireAuth, tenantIsolation);

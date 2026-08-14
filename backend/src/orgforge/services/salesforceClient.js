@@ -274,7 +274,7 @@ class SalesforceClient {
 
       // Installed = managed package row present OR the External Client App
       // exists. The ECA is the signal that actually matters — it is the OAuth
-      // client Forge authenticates through, and it exists in exactly the orgs
+      // client OrgForge authenticates through, and it exists in exactly the orgs
       // where the connector was set up. This closes the false "missing"
       // verdicts that happen when (a) the connector is installed as an
       // UNMANAGED package (never listed in InstalledSubscriberPackage) or

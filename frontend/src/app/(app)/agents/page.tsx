@@ -422,7 +422,7 @@ export default function AgentsPage() {
             href="/chat"
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue text-white text-xs font-semibold shadow-glow hover:bg-brand-blue-hover transition-colors"
           >
-            <Sparkles className="w-3.5 h-3.5" /> Ask Forge
+            <Sparkles className="w-3.5 h-3.5" /> Ask OrgForge
           </Link>
         </div>
       </div>
@@ -609,10 +609,7 @@ export default function AgentsPage() {
               key={i}
               className="flex flex-col rounded-2xl border border-brand-border bg-white p-5.5 shadow-soft min-h-[220px]"
             >
-              <div className="flex items-center justify-between">
-                <div className="skeleton-strong w-11 h-11 rounded-xl" aria-hidden="true" />
-                <div className="skeleton-strong h-5 w-16 rounded-full" aria-hidden="true" />
-              </div>
+              <div className="skeleton-strong w-11 h-11 rounded-xl" aria-hidden="true" />
               <div className="mt-4 flex-1 space-y-2">
                 <div className="skeleton-strong h-4 w-3/4 rounded" aria-hidden="true" />
                 <div className="skeleton-strong h-3 w-1/2 rounded" aria-hidden="true" />
@@ -642,20 +639,11 @@ export default function AgentsPage() {
                   onClick={() => setSelectedAgent(agent)}
                   className="group flex flex-col justify-between rounded-2xl border border-brand-border bg-white p-5.5 shadow-soft hover:shadow-card-hover hover:border-brand-blue/35 transition-all duration-200 hover:-translate-y-0.5 cursor-pointer relative"
                 >
-                  {/* Top card row: Bot Avatar + Status Pill */}
+                  {/* Bot Avatar */}
                   <div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-blue-light to-blue-100/60 border border-brand-blue/20 flex items-center justify-center shrink-0 text-brand-blue group-hover:bg-brand-blue group-hover:text-white transition-all duration-200 shadow-xs">
-                        <Bot className="w-5.5 h-5.5" />
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200/60 shrink-0">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                        </span>
-                        in org
-                      </span>
-                    </div>
+                    <span className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-blue-light to-blue-100/60 border border-brand-blue/20 flex items-center justify-center shrink-0 text-brand-blue group-hover:bg-brand-blue group-hover:text-white transition-all duration-200 shadow-xs">
+                      <Bot className="w-5.5 h-5.5" />
+                    </span>
 
                     {/* Agent Titles and Developer Identifier */}
                     <div className="mt-4 min-w-0">
@@ -744,9 +732,6 @@ export default function AgentsPage() {
                           <p className="text-sm font-bold text-brand-dark group-hover:text-brand-blue transition-colors truncate">
                             {displayTitle}
                           </p>
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200/60 shrink-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> in org
-                          </span>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <button

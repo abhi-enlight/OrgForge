@@ -41,7 +41,7 @@ test('POST /chat/route returns a routing decision', async () => {
 
 test('honors pinned capability from the UI chip', async () => {
   // Use the REAL routeIntent so the pinned bypass path is exercised.
-  const { routeIntent } = await import('@forge/ai');
+  const { routeIntent } = await import('@orgforge/ai');
   let classifierCalled = false;
   const app = makeApp({
     route: async (message, opts) => routeIntent(message, {

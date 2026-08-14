@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from './app.js';
-import { linkLegacyAgentforgeOrgs } from '@forge/org-connections';
+import { linkLegacyAgentforgeOrgs } from '@orgforge/org-connections';
 import { createLinkLegacyRouter } from './routes/linkLegacy.js';
 import express from 'express';
 

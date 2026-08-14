@@ -19,7 +19,7 @@ interface PackageInstallModalProps {
 /**
  * Shown when the OrgForge Connector package is NOT installed in the selected
  * org. Mirrors the proven AgentForge flow but with the improvements that
- * matter for Forge: the install URL comes from the backend (correct for
+ * matter for OrgForge: the install URL comes from the backend (correct for
  * production / sandbox / scratch), and the re-check action force-bypasses the
  * Redis cache so a freshly-installed package clears the popup immediately.
  */
@@ -155,7 +155,7 @@ export default function PackageInstallModal({
                   </h4>
                   <p className="text-xs text-slate-500 leading-relaxed">
                     In <strong className="font-semibold text-slate-700">Setup → External Client App Manager</strong>, open{' '}
-                    <em className="not-italic font-medium text-slate-700">Forge by Enlight Lab</em> and set{' '}
+                    <em className="not-italic font-medium text-slate-700">OrgForge by Enlight Lab</em> and set{' '}
                     <strong className="font-semibold text-slate-700">Permitted Users</strong> to{' '}
                     <em className="not-italic font-medium text-slate-700">All users may self-authorize</em> (or assign the admin-approved permission set).
                   </p>

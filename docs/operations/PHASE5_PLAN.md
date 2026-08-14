@@ -1,4 +1,4 @@
-# Forge — Phase 5 Plan (Canary · Soak · Decommission)
+# OrgForge — Phase 5 Plan (Canary · Soak · Decommission)
 
 **Status:** DRAFT — Phase 5 is the only remaining product phase; every item below is gated on the Phase 1–4 code being proven in a live org.
 **Update (2026-08-14):** the legacy frontend + API **deploys have already been stopped** — the old apps no longer ship (the repos were archived Pass 33; the prod targets are now dark). This happened before the 301 step, so **rollback-to-legacy is off the table** and the old origins must be pointed at the new domain soon or old bookmarks will hit dead URLs. The critical path is now: verify the new domain end-to-end → land the 301s → then the §4 cleanup + schema drop (S-8).
@@ -23,13 +23,13 @@
 
 ### Stage 0 — Deploy unified app with flags off (no behavior change)
 
-- [ ] Deploy `frontend` (Vercel) + unified API (Render) to prod domains, flags **off**: `FORGE_UNIFIED_FRONTEND=off`, `FORGE_UNIFIED_API=on` (capability routers), `FORGE_MOUNT_AGENTFORGE=on` (keep `/api/auth` + `/api/org` aliases live for the legacy frontends).
+- [ ] Deploy `frontend` (Vercel) + unified API (Render) to prod domains, flags **off**: `ORGFORGE_UNIFIED_FRONTEND=off`, `ORGFORGE_UNIFIED_API=on` (capability routers), `ORGFORGE_MOUNT_AGENTFORGE=on` (keep `/api/auth` + `/api/org` aliases live for the legacy frontends).
 - [ ] Verify `/api/v1/health` + `/api/v1/health/db` healthy on the prod origin; smoke `/login` → 3-step onboarding on the new domain.
 - [ ] Leave legacy deploy targets untouched.
 
 ### Stage 1 — Internal canary (week 1)
 
-- [ ] Set `NEXT_PUBLIC_FORGE_UNIFIED_FRONTEND=on` for the **internal team only** (Vercel environment-scoped / preview group) — enables canary-only affordances (the stub rule-based classifier chip, `lib/flags.ts`).
+- [ ] Set `NEXT_PUBLIC_ORGFORGE_UNIFIED_FRONTEND=on` for the **internal team only** (Vercel environment-scoped / preview group) — enables canary-only affordances (the stub rule-based classifier chip, `lib/flags.ts`).
 - [ ] Internal team works in the unified app day-to-day; bugs go straight to the board.
 - [ ] Gate to full rollout: **no P0/P1 issues** and the soak metrics (§3) within thresholds for the week.
 
@@ -41,7 +41,7 @@
 
 ### Stage 3 — Full rollout
 
-- [ ] Flip `NEXT_PUBLIC_FORGE_UNIFIED_FRONTEND=on` for 100%.
+- [ ] Flip `NEXT_PUBLIC_ORGFORGE_UNIFIED_FRONTEND=on` for 100%.
 - [ ] Announce cutover window; verify the new domain **end-to-end one last time** (D5: only then point old domains at it).
 
 ### Stage 4 — Cutover (301s) & decommission (§4)
@@ -65,7 +65,7 @@
 | **Engagement** | chat turns/user/day; `DELETE /chat/:contextId` (Stop & reset / Clear) usage; capability chip usage | trending up, no regressions |
 | **Data growth sanity** | `forge.ai_logs`, `routing_log`, `chat_sessions`, `diagnostics`, `agents` row counts | no runaway loops |
 
-> Note: the plan's legacy **AI Judge nightly** (`/internal/run-ai-judge`) is **not carried** into the unified API (contract §3.1: planned V7 endpoints not ported). During the transition it keeps running in the legacy process; decide its fate (port as a Forge internal cron or retire) before legacy decommission.
+> Note: the plan's legacy **AI Judge nightly** (`/internal/run-ai-judge`) is **not carried** into the unified API (contract §3.1: planned V7 endpoints not ported). During the transition it keeps running in the legacy process; decide its fate (port as a OrgForge internal cron or retire) before legacy decommission.
 
 ---
 
@@ -74,10 +74,10 @@
 > Contract rule (`api_contract.md` §6): when Phase 5 removes the transition mounts, **strike §4's alias paragraph and bump the changelog** — no `/api/v1/*` consumer is affected.
 
 ### 4.1 Code removals
-- [x] **`@forge/compat` retired early (Pass 32)** — the one-folder native port converted Agentforge CJS→ESM (`backend/src/agentforge`) and OrgForge moved in (`backend/src/orgforge`), so no CJS router is mounted anymore; the package was deleted from workspaces + `backend/package.json`.
+- [x] **`@orgforge/compat` retired early (Pass 32)** — the one-folder native port converted Agentforge CJS→ESM (`backend/src/agentforge`) and OrgForge moved in (`backend/src/orgforge`), so no CJS router is mounted anymore; the package was deleted from workspaces + `backend/package.json`.
 - [x] **Legacy sibling repos archived (Pass 33, 2026-08-11)** — `OrgForge/` + `Agentforge/` moved to `/Users/abhi/Enlight/archive/` (reversible, README + restore commands included) after a full web+API product smoke; the unified app is fully self-contained with **zero out-of-repo references**. The §4.3 "stop legacy deploys" items below now refer only to the **deployed prod targets**, not to local code.
 - [x] **`backend/src/app.js` cleaned (2026-08-14)** — the `enableAgentforge` block is gone: the `/api/auth` + `/api/org` mounts and the transition-only `express-session` middleware block were removed; the dead alias routers (`backend/src/agentforge/routes/`) were deleted.
-- [x] **`FORGE_MOUNT_AGENTFORGE` removed (2026-08-14)** from env files, package scripts, and docs; `FORGE_UNIFIED_API` stays (capability routers are the product now).
+- [x] **`ORGFORGE_MOUNT_AGENTFORGE` removed (2026-08-14)** from env files, package scripts, and docs; `ORGFORGE_UNIFIED_API` stays (capability routers are the product now).
 
 ### 4.2 Env / config
 - [x] **`JWT_SECRET` retired early (Pass 36)** — the ported Agentforge auth router no longer requires it at boot (lazy `requireJwtSecret()` fails at use only); `.env.example` rewritten with the consolidated env set (canonical names + legacy-alias fallbacks) and retired-secret notes.

@@ -17,7 +17,7 @@ import {
 import { EASE_OUT } from '@/lib/motion';
 
 /**
- * LivePipeline: a real mini-version of the Forge chat surface (honest
+ * LivePipeline: a real mini-version of the OrgForge chat surface (honest
  * component preview, not a fake screenshot) that loops a build sequence:
  *
  *   message types -> capability routes -> gates stream -> signed record
@@ -145,7 +145,7 @@ export function LivePipeline() {
             </div>
             {/* DESIGN.md §3 micro-caption: mono uppercase wide-tracking */}
             <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-brand-dark">
-              Forge copilot
+              OrgForge copilot
             </span>
           </div>
           <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">

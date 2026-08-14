@@ -8,7 +8,7 @@
 
 **Depth amendment (user, Pass 42):** "background feels empty, use SVGs + 3D design elements" → the background gains real depth while keeping the light blueprint world: a **fixed ambient layer** in `page.tsx` (faint drafting lines + two offset glows behind all content), a new **`IsometricGrid`** component (hand-drawn SVG isometric plane, `perspective(1200px) rotateX(10deg)` tilt behind the hero stage, slow `blueprint-drift` CSS loop), a new **`AmbientShape`** component (blurred wireframe silhouettes — cube/arch/hex/brackets/orbits — with a `blueprint-wire` palette, float + pulse loops, used in every section), and **one scroll-linked parallax** in the hero (`useScroll`/`useTransform`, transform-only, gated by `useReducedMotion`). Three.js/WebGL was explicitly rejected (perf + a11y, ui-ux-pro-max "3D & Hyperrealism" is Poor) in favor of CSS 3D transforms + inline SVG ("Dimensional Layering", Tailwind 10/10).
 **Skills used:** impeccable (`bolder` + `polish` methodology) · design-taste-frontend (pre-flight rules) · ui-ux-pro-max (dials: VARIANCE 8, MOTION 7, DENSITY 3).
-**Design read:** *B2B SaaS landing for technical Salesforce buyers, with a confident-technical-calm language, leaning toward a light "live blueprint / command-center schematic" world in Forge electric blue on near-white, Space Grotesk display + Inter body + Fira Code mono, restrained-but-alive motion.*
+**Design read:** *B2B SaaS landing for technical Salesforce buyers, with a confident-technical-calm language, leaning toward a light "live blueprint / command-center schematic" world in OrgForge electric blue on near-white, Space Grotesk display + Inter body + Fira Code mono, restrained-but-alive motion.*
 
 ---
 
@@ -25,7 +25,7 @@ The page is *correct* but **structurally uniform**. Every section makes the same
 | 5 | **Uniform motion** — one `Reveal` (fade + translate) everywhere, same 0.08s stagger | §5 ("motion claimed, motion shown") |
 | 6 | **Default Inter for display** — the #1 AI tell | §4.1 (avoid Inter as display default) |
 | 7 | **Eyebrows underused then duplicated** — hero has one; section headers are undifferentiated `h2 + p` | §4.7 Eyebrow Restraint (budget = 2 total) |
-| 8 | **Zero brand texture** — a product named Forge with a governed-change story has no blueprint/grid/artifact visual language at all | impeccable `bolder` skeleton test (structure alone should say what this is) |
+| 8 | **Zero brand texture** — a product named OrgForge with a governed-change story has no blueprint/grid/artifact visual language at all | impeccable `bolder` skeleton test (structure alone should say what this is) |
 | 9 | **Product preview wasted** — the real product streams progress cards, dry-run results, signed records. The landing shows one frozen bubble | §4.8 (real component preview allowed) |
 
 **Design read / dials:** VARIANCE 8 (asymmetric, offset) · MOTION 7 (fluid, scroll-linked, one loop) · DENSITY 3 (airy — the app's "whitespace > widgets" law holds).
@@ -34,7 +34,7 @@ The page is *correct* but **structurally uniform**. Every section makes the same
 
 ## 1. The committed world — "Live blueprint"
 
-Forge is where Salesforce orgs get *built*. The landing becomes a **light, technical schematic of that process**:
+OrgForge is where Salesforce orgs get *built*. The landing becomes a **light, technical schematic of that process**:
 
 - **Dot-grid blueprint texture** (CSS `radial-gradient` dots) on the hero and CTA, never on scrolling containers (perf rule §6.E).
 - **Connector lines** between stages that **draw themselves on scroll** (SVG `stroke-dashoffset` or Motion `pathLength`), one page-wide use, in the How-it-works rail.
@@ -53,7 +53,7 @@ Forge is where Salesforce orgs get *built*. The landing becomes a **light, techn
 | Display / headlines | **Inter 700**, `tracking-[-0.02em]`/`[-0.03em]` | Reverted from Space Grotesk (user: "change the fonts to design.md fonts") — Inter is DESIGN.md's UI type, used everywhere |
 | Body | Inter 400/500 (unchanged) | DESIGN.md §3 |
 | Mono / artifacts / coordinates | Fira Code (unchanged) | Code, YAML, gate IDs, HMAC snippets |
-| Micro-captions | Fira Code, 10-11px, `uppercase tracking-[0.2em]` | DESIGN.md §3 — now also on the LivePipeline chat header ("FORGE COPILOT") |
+| Micro-captions | Fira Code, 10-11px, `uppercase tracking-[0.2em]` | DESIGN.md §3 — now also on the LivePipeline chat header ("ORGFORGE COPILOT") |
 
 **Scale ladder (landing only):** hero display `text-5xl sm:text-6xl lg:text-7xl` (headline ≤ 8 words → large scale justified) · section `h2` `text-4xl lg:text-5xl` · card titles `text-lg/xl font-bold tracking-tight` · body `text-base/lg` `max-w-[65ch]`.
 
@@ -76,7 +76,7 @@ Everything else (palette, shadows, radii, status colors, `hero-gradient`, `radia
 ## 4. Component-by-component redesign
 
 ### 4.1 `Nav.tsx` (light touch)
-- Keep sticky glass bar, one line, `h-16`, Enlight logo + FORGE wordmark, Sign in.
+- Keep sticky glass bar, one line, `h-16`, Enlight logo + ORGFORGE wordmark, Sign in.
 - Add the **dot-grid strip** as a 2px hairline accent under the bar (blueprint enters at frame one).
 - No new links, no badges, no status dots (decorative-dot ban §9.F).
 
@@ -84,10 +84,10 @@ Everything else (palette, shadows, radii, status colors, `hero-gradient`, `radia
 - **Layout:** asymmetric 5/7 split (left copy, right stage), `min-h-[100dvh]` (never `h-screen`), top padding ≤ `pt-24`.
 - **Background:** full-bleed dot grid + the existing radial brand glow, both `aria-hidden`, `pointer-events-none`.
 - **Copy (≤4 text elements, eyebrow + headline + subtext + CTAs):**
-  - Eyebrow (1 of the 2 budget): `FORGE BY ENLIGHT LAB` (mono, brand blue)
+  - Eyebrow (1 of the 2 budget): `ORGFORGE BY ENLIGHT LAB` (mono, brand blue)
   - Headline (≤2 lines, Space Grotesk 700): *"One copilot for your whole Salesforce org"*
   - Subtext (≤20 words): *"Build Agentforce agents and ship governed org changes from one conversation. Two skills, one assistant, fully signed."*
-  - CTAs: `Open Forge` (primary) + `See what it does` → `#capabilities` (secondary). One label per intent, page-wide.
+  - CTAs: `Open OrgForge` (primary) + `See what it does` → `#capabilities` (secondary). One label per intent, page-wide.
 - **Entrance choreography:** line-mask reveal on the headline (words slide up through an overflow mask), eyebrow + subtext + CTAs stagger after, stage slides in from the right with `scale 0.96 → 1`. Springs (`stiffness 100, damping 20`), total < 1s. Reduced-motion → all visible instantly.
 
 ### 4.3 `LivePipeline.tsx` — the hero asset (replaces `ChatPreview`)
@@ -123,11 +123,11 @@ Everything else (palette, shadows, radii, status colors, `hero-gradient`, `radia
 
 ### 4.8 `CtaSection.tsx` — the dark forge anchor (family #6)
 - Ink Navy panel with **blueprint-on-dark dot grid** + electric radial glow (the one dark peak).
-- Display headline in Space Grotesk: *"Your org speaks Salesforce. Forge speaks you."* + one `Open Forge` CTA.
+- Display headline in Space Grotesk: *"Your org speaks Salesforce. OrgForge speaks you."* + one `Open OrgForge` CTA.
 - Optional subtle 3-4s glow pulse (CSS, reduced-motion off). No scanlines, no gimmicks.
 
 ### 4.9 `Footer.tsx` (light touch)
-- Keep logo + FORGE wordmark, tagline, anchors, Sign in. No version stamps, no locale strips.
+- Keep logo + ORGFORGE wordmark, tagline, anchors, Sign in. No version stamps, no locale strips.
 
 ---
 
@@ -152,7 +152,7 @@ Everything else (palette, shadows, radii, status colors, `hero-gradient`, `radia
 - [ ] Eyebrow count = 2 (hero + capabilities) ≤ ceil(6/3)
 - [ ] 6 different layout families across 6 sections (no repetition, no zigzag)
 - [ ] Hero fits viewport: ≤2-line headline, ≤20-word subtext, CTAs visible, `min-h-[100dvh]`, `pt ≤ 24`
-- [ ] No duplicate CTA intent (`Open Forge` / `Sign in` only)
+- [ ] No duplicate CTA intent (`Open OrgForge` / `Sign in` only)
 - [ ] No scroll cues, no version labels, no section-number labels, no decorative dots
 - [ ] Bento = exactly 6 cells, ≥3 with real visual variation
 - [ ] Real product preview (LivePipeline), no div-fake-screenshot

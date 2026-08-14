@@ -5,16 +5,16 @@ import cors from 'cors';
 import morgan from 'morgan';
 
 /**
- * Builds the unified Forge Express app. Factored out of index.js so tests can
+ * Builds the unified OrgForge Express app. Factored out of index.js so tests can
  * construct the app without binding a port.
  *
  * @param {object} [opts]
- * @param {boolean} [opts.enableOrgForge] - override FORGE_UNIFIED_API flag
+ * @param {boolean} [opts.enableOrgForge] - override ORGFORGE_UNIFIED_API flag
  * @returns {import('express').Express}
  */
 export async function createApp(opts = {}) {
   const app = express();
-  const enableOrgForge = opts.enableOrgForge ?? process.env.FORGE_UNIFIED_API === 'on';
+  const enableOrgForge = opts.enableOrgForge ?? process.env.ORGFORGE_UNIFIED_API === 'on';
 
   // ── Security middleware (OrgForge baseline, plan §8.5) ───────────────────
   app.set('trust proxy', 1);
@@ -65,7 +65,7 @@ export async function createApp(opts = {}) {
   // OrgForge capability routers are first-class modules in this repo
   // (api/src/orgforge) — native imports, no out-of-repo path resolution.
   if (enableOrgForge) {
-    console.log('[forge-api] mounting OrgForge capability routers (FORGE_UNIFIED_API=on)');
+    console.log('[forge-api] mounting OrgForge capability routers (ORGFORGE_UNIFIED_API=on)');
     try {
       const authRoutes = (await import('./orgforge/routes/auth.js')).default;
       const orgRoutes = (await import('./orgforge/routes/orgs.js')).default;
@@ -91,7 +91,7 @@ export async function createApp(opts = {}) {
       throw err; // flag explicitly requested the mount — fail loudly
     }
   } else {
-    console.log('[forge-api] OrgForge capability routers NOT mounted (set FORGE_UNIFIED_API=on in Phase 2)');
+    console.log('[forge-api] OrgForge capability routers NOT mounted (set ORGFORGE_UNIFIED_API=on in Phase 2)');
   }
 
   // ── JSON 404 + sanitized error handler (OrgForge baseline) ───────────────

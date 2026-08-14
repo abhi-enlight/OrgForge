@@ -68,7 +68,7 @@ function greetingForToday(): string {
 }
 
 /**
- * Dashboard (plan §6.2) — the calm home. One hero action (Ask Forge), three
+ * Dashboard (plan §6.2) — the calm home. One hero action (Ask OrgForge), three
  * clickable stat tiles, one attention banner (only when something is wrong),
  * and one unified activity feed. Empty states collapse the page to a single
  * CTA per the "not too much" rule (§6.0).
@@ -86,7 +86,7 @@ export default function DashboardPage() {
 
 function DashboardContent() {
   const router = useRouter();
-  const { org } = useActiveOrg();
+  const { org, refreshOrgs } = useActiveOrg();
   const reduceMotion = useReducedMotion();
   const toast = useToast();
   // Org readiness (SHARED via the provider — chat chip + sign-in banner + the
@@ -191,6 +191,17 @@ function DashboardContent() {
   const askForge = (prompt: string) => router.push(`/chat?prompt=${encodeURIComponent(prompt)}`);
   const recheck = async () => {
     setRefreshing(true);
+    // Refresh the org list FIRST — a just-connected org must surface now.
+    // Without this, the empty-state "Recheck after connecting" only reloaded
+    // agents/records against a stale (empty) org list from context, so a
+    // connect made in the same tab could never appear (the org-context cache
+    // is only invalidated by a refetch or a new tab).
+    let connectedNow = false;
+    try {
+      connectedNow = (await refreshOrgs()).length > 0;
+    } catch {
+      connectedNow = false; // backend down — fall through to the normal error path
+    }
     const result = await load();
     if (result) {
       // Transient confirmation — auto-dismisses, so a routine refresh stays
@@ -203,6 +214,10 @@ function DashboardContent() {
       } else {
         toast.error('Could not refresh agents', result.error ?? 'Check your connection and retry.');
       }
+    } else if (connectedNow) {
+      // The org list just gained its first org from the refetch — the data
+      // load (agents/records) re-runs via the org-keyed effect on re-render.
+      toast.success('Org connected', 'Your org is ready. Loading your workspace…');
     } else {
       // No org after a manual recheck (empty state) — say so instead of
       // leaving the user guessing whether the reload did anything.
@@ -222,7 +237,7 @@ function DashboardContent() {
           Connect Salesforce to get started
         </h1>
         <p className="mt-3 text-slate-500 max-w-md">
-          Forge builds and deploys AI agents, and makes governed org changes. Connect your org.
+          OrgForge builds and deploys AI agents, and makes governed org changes. Connect your org.
           Everything else runs in the background.
         </p>
         <div className="mt-8 flex gap-3">
@@ -313,7 +328,7 @@ function DashboardContent() {
           className="group inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-brand-blue text-white font-semibold shadow-glow hover:bg-brand-blue-hover transition-[background-color,transform] hover:scale-[1.02]"
         >
           <Sparkles className="w-4 h-4" />
-          Ask Forge
+          Ask OrgForge
           <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
         </button>
       </div>

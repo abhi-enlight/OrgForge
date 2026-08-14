@@ -1,20 +1,21 @@
 {
-  "name": "@forge/api",
+  "name": "@orgforge/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Forge unified API (Express 5, :3001) — mounts OrgForge + Agentforge capability routers",
+  "description": "OrgForge unified API (Express 5, :3001) — mounts OrgForge + Agentforge capability routers",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
+    "start:api": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node --test --test-reporter spec 'src/**/*.test.js' 'scripts/**/*.test.mjs'"
   },
   "dependencies": {
-    "@forge/ai": "0.1.0",
-    "@forge/auth": "0.1.0",
-    "@forge/diagnostics": "0.1.0",
-    "@forge/org-connections": "0.1.0",
+    "@orgforge/ai": "0.1.0",
+    "@orgforge/auth": "0.1.0",
+    "@orgforge/diagnostics": "0.1.0",
+    "@orgforge/org-connections": "0.1.0",
     "@google/generative-ai": "^0.24.1",
     "adm-zip": "^0.6.0",
     "axios": "^1.7.5",

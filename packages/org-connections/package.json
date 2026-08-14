@@ -1,9 +1,9 @@
 {
-  "name": "@forge/org-connections",
+  "name": "@orgforge/org-connections",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Forge unified org-connection store: encrypted credentials, refresh dedup, legacy re-link",
+  "description": "OrgForge unified org-connection store: encrypted credentials, refresh dedup, legacy re-link",
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js"

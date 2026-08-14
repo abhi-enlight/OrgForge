@@ -6,10 +6,10 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { Bot, ShieldCheck, Sparkles, ArrowRight, Copy, Check, LayoutTemplate } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EASE_REVEAL } from '@/lib/motion';
-import { AGENT_TEMPLATES, CHANGE_TEMPLATES, type ForgeTemplate } from '@/lib/templates';
+import { AGENT_TEMPLATES, CHANGE_TEMPLATES, type OrgForgeTemplate } from '@/lib/templates';
 
 /** Difficulty → badge treatment. */
-const DIFFICULTY_CLASS: Record<ForgeTemplate['difficulty'], string> = {
+const DIFFICULTY_CLASS: Record<OrgForgeTemplate['difficulty'], string> = {
   Starter: 'bg-brand-pass/10 text-brand-pass',
   Intermediate: 'bg-brand-warning/10 text-brand-warning',
   Advanced: 'bg-brand-refused/10 text-brand-refused',
@@ -32,7 +32,7 @@ export default function TemplatesPage() {
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
   }, []);
 
-  const copyPrompt = async (t: ForgeTemplate) => {
+  const copyPrompt = async (t: OrgForgeTemplate) => {
     try {
       await navigator.clipboard.writeText(t.prompt);
       setCopiedId(t.id);
@@ -51,7 +51,7 @@ export default function TemplatesPage() {
     icon: typeof Bot;
     iconBg: string;
     iconColor: string;
-    templates: ForgeTemplate[];
+    templates: OrgForgeTemplate[];
   }> = [
     {
       id: 'agent',
@@ -94,7 +94,7 @@ export default function TemplatesPage() {
           href="/chat"
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue text-white text-sm font-semibold shadow-glow hover:bg-brand-blue-hover transition-colors"
         >
-          <Sparkles className="w-4 h-4" /> Ask Forge
+          <Sparkles className="w-4 h-4" /> Ask OrgForge
         </Link>
       </div>
 

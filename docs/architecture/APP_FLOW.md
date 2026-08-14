@@ -1,4 +1,4 @@
-# Forge — Application Flow
+# OrgForge — Application Flow
 
 End-to-end user journeys and page flows for the unified app. Mirrors `unification_plan.md` §6/§12 with the implemented reality (`frontend` routes + `api` SSE flow).
 
@@ -19,7 +19,7 @@ Landing (/) ──► Sign in (/login) ──► [Connect Salesforce] ──► 
    Dashboard    Copilot      Agents      Changes & Audit   Settings    Workspace
    (/dashboard) (/chat)     (/agents)      (/changes)     (/settings)  (/workspace)
    calm home    primary     read-only     read-only       3 tabs      Advanced view
-   + Ask Forge  work        list + YAML   + audit + CSV   (Connections/ (10-stage
+   + Ask OrgForge  work        list + YAML   + audit + CSV   (Connections/ (10-stage
                               drawer      + refusal log   Integrations/ stepper)
                                                           Advanced)
 ```
@@ -51,7 +51,7 @@ Step 3  "Connect GitHub audit log (optional)?"
 - **Authentication Infrastructure:** Session security is enforced server-side using `@supabase/ssr`. `middleware.ts` refreshes auth tokens on every request and blocks unauthorized access to `/(app)` routes (`/chat`, `/agents`, `/changes`, `/dashboard`, `/settings`, `/workspace`), redirecting unauthenticated users to `/login?redirectTo=...`.
 - **Legacy users:** one-time `POST /api/v1/auth/link-legacy` re-parents leftover Agentforge connections to the Supabase identity (best-effort; the OAuth flow is the guaranteed path).
 - **Org pick correction (EC-13):** diagnostics auto-detect `Organization.IsSandbox` and fix a wrong Production/Sandbox/Scratch choice.
-- **After connect** the dashboard collapses to: hero "Welcome back" + **Ask Forge** + a diagnostics banner if anything needs attention.
+- **After connect** the dashboard collapses to: hero "Welcome back" + **Ask OrgForge** + a diagnostics banner if anything needs attention.
 
 ---
 
@@ -59,7 +59,7 @@ Step 3  "Connect GitHub audit log (optional)?"
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│ TOP BAR (sticky 65px)  [☰] F▢ FORGE ······ [org pill ▾] [avatar ▾] │
+│ TOP BAR (sticky 65px)  [☰] F▢ ORGFORGE ······ [org pill ▾] [avatar ▾] │
 ├──────────────┬─────────────────────────────────────────────────────┤
 │ SIDEBAR 256px│                                                     │
 │ ◆ Dashboard  │  <main>  bg-brand-surface/40, p-6 md:p-8           │
@@ -82,7 +82,7 @@ Step 3  "Connect GitHub audit log (optional)?"
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│ Welcome back, {name}                    [Ask Forge ──►]    │  ← one hero action
+│ Welcome back, {name}                    [Ask OrgForge ──►]    │  ← one hero action
 ├──────────────┬──────────────┬──────────────────────────────┤
 │ 🤖 Agents    │ 🛡 Open       │ 📜 Audit trail              │  ← 3 clickable stat tiles
 │  12 · 2h ago │ changes 4    │  last: "Validation rule      │     (deep-link to chat
@@ -95,7 +95,7 @@ Step 3  "Connect GitHub audit log (optional)?"
 └────────────────────────────────────────────────────────────┘
 ```
 
-Empty states collapse the page to a single CTA: **Connect Salesforce** (no org) / **Ask Forge to build your first agent** (no agents) / **Request a governed change** (no changes).
+Empty states collapse the page to a single CTA: **Connect Salesforce** (no org) / **Ask OrgForge to build your first agent** (no agents) / **Request a governed change** (no changes).
 
 ---
 

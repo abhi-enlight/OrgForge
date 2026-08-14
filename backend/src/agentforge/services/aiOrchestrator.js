@@ -4,7 +4,7 @@ import { generateMockData } from './mockDataGenerator.js'
 import { testAgent } from './agentTester.js'
 import 'dotenv/config';
 
-// Inert fallbacks for retired legacy services (superseded by @forge/ai)
+// Inert fallbacks for retired legacy services (superseded by @orgforge/ai)
 const saveLog = async () => {};
 const fetchActiveLessons = async () => [];
 const analyzeSingleFailure = async () => null;
@@ -156,6 +156,7 @@ If the user asks a question about the agent you just built (e.g., "What orders i
 6. No hardcoded IDs.
 7. Only global with sharing classes.
 8. Single quotes ONLY for all strings. NEVER double quotes in Apex.
+9. **NO MULTILINE STRING LITERALS (CRITICAL)**: Apex string literals CANNOT span multiple lines. NEVER place a real line break inside single quotes — the Apex compiler rejects it with "Illegal string literal: Line breaks are not allowed in string literals". For multi-line text, use the \\n escape sequence inside the literal (e.g. 'line one\\nline two') or adjacent concatenation ('line one ' + 'line two'). This applies to EVERY single-quoted string: variables, @InvocableVariable label/description annotations, and SOQL string values.
 
 ## APEX TEST GENERATION (MANDATORY)
 For EVERY Apex class you generate via \`create_action\`, you MUST ALSO generate a companion test class and pass it in the \`testClassCode\` parameter. Follow these rules exactly:
@@ -1532,7 +1533,9 @@ class ConversationManager {
             statusMsg = 'Subagent created: ' + call.args.masterLabel;
           } else if (call.name === 'create_action') {
             callResult = sfClient.createAction(this.ctx, call.args);
-            statusMsg = 'Action generated: ' + call.args.masterLabel + ' (Apex)';
+            statusMsg = (callResult && callResult.success === false)
+              ? 'Action rejected by linter: ' + (callResult.error || call.args.masterLabel)
+              : 'Action generated: ' + call.args.masterLabel + ' (Apex)';
           } else if (call.name === 'attach_flow_action') {
             callResult = sfClient.attachFlowAction(this.ctx, call.args);
             statusMsg = 'Flow action attached: ' + call.args.masterLabel + ' -> ' + call.args.flowApiName;
@@ -1781,7 +1784,7 @@ class ConversationManager {
         } else {
           this.state = 'building';
           const errorDetails = (deployResult.errors || []).map(e =>
-            '- ' + e.component + ' (' + e.type + '): ' + e.problem + (e.line ? ' at line ' + e.line : '')
+            '- ' + e.component + ' (' + e.type + '): ' + e.problem + (e.line ? ' at line ' + e.line : '') + (e.fileName && e.fileName !== e.component ? ' [' + e.fileName + ']' : '')
           ).join('\n');
 
           // Detect if any errors are test failures or coverage warnings

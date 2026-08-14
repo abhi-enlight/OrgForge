@@ -1,9 +1,9 @@
 {
-  "name": "@forge/auth",
+  "name": "@orgforge/auth",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Forge unified auth: requireAuth + tenantIsolation (Supabase JWT)",
+  "description": "OrgForge unified auth: requireAuth + tenantIsolation (Supabase JWT)",
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js"

@@ -1,9 +1,9 @@
 import express from 'express';
 import { z } from 'zod';
-import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
+import { createAuthMiddleware, tenantIsolation } from '@orgforge/auth';
 const requireAuth = createAuthMiddleware();
 import { orgIndexQueue, redisConnection } from '../jobs/queue.js';
-import { getOrgCredentials } from '@forge/org-connections';
+import { getOrgCredentials } from '@orgforge/org-connections';
 import { salesforceClient } from '../services/salesforceClient.js';
 
 const router = express.Router();
@@ -12,8 +12,8 @@ const router = express.Router();
 // The 033 SubscriberPackageId and 04t version id come from the Dev Hub package.
 const ORGFORGE_PACKAGE_ID = process.env.ORGFORGE_PACKAGE_ID || '033fj000000PqLBAA0';
 // Unified ECA version name first (the diagnostics preflight already uses
-// FORGE_ECA_PACKAGE_VERSION_ID); legacy ORGFORGE_PACKAGE_VERSION_ID honored.
-const ORGFORGE_PACKAGE_VERSION_ID = process.env.FORGE_ECA_PACKAGE_VERSION_ID || process.env.ORGFORGE_PACKAGE_VERSION_ID || '04tfj000000QFHxAAO';
+// ORGFORGE_ECA_PACKAGE_VERSION_ID); legacy ORGFORGE_PACKAGE_VERSION_ID honored.
+const ORGFORGE_PACKAGE_VERSION_ID = process.env.ORGFORGE_ECA_PACKAGE_VERSION_ID || process.env.ORGFORGE_PACKAGE_VERSION_ID || '04tfj000000QFHxAAO';
 const ORGFORGE_ECA_NAME = 'OrgForge_ECA';
 
 // 10 minutes — short enough that a freshly-installed package clears quickly,

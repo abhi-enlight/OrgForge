@@ -94,7 +94,7 @@ test('package: query failure returns false (never throws)', async () => {
 
 test('package: ECA fallback reports installed when the package row is absent but the ECA exists', async () => {
   // Unmanaged install / pinned-id mismatch: InstalledSubscriberPackage has no
-  // row, but the External Client Application (the OAuth client Forge uses) is
+  // row, but the External Client Application (the OAuth client OrgForge uses) is
   // present → the connector IS set up → installed. ExternalClientApplication
   // is a STANDARD REST object, so the fallback queries api.query (a Tooling
   // query returns "sObject type not supported" in real orgs).

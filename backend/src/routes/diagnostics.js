@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
-import { getOrgCredentials } from '@forge/org-connections';
-import { runPreFlightCheck, getDiagnostics, invalidateDiagnostics } from '@forge/diagnostics';
+import { createAuthMiddleware, tenantIsolation } from '@orgforge/auth';
+import { getOrgCredentials } from '@orgforge/org-connections';
+import { runPreFlightCheck, getDiagnostics, invalidateDiagnostics } from '@orgforge/diagnostics';
 import { forgeDb as forgeDbSingleton, publicDb as credsDbSingleton } from '../lib/supabaseClients.js';
 
 const paramsSchema = z.object({
@@ -13,7 +13,7 @@ const paramsSchema = z.object({
 // orgforge/routes/orgs.js — keep the two in sync). The 033 SubscriberPackageId
 // and 04t version id come from the Dev Hub package; env overrides win.
 const ORGFORGE_PACKAGE_VERSION_ID =
-  process.env.FORGE_ECA_PACKAGE_VERSION_ID ||
+  process.env.ORGFORGE_ECA_PACKAGE_VERSION_ID ||
   process.env.ORGFORGE_PACKAGE_VERSION_ID ||
   '04tfj000000QFHxAAO';
 

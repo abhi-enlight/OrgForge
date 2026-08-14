@@ -26,7 +26,7 @@ export async function describeImage({ base64, mimeType, hint = '', model } = {})
   }
   const ai = new GoogleGenAI({ apiKey });
   const prompt =
-    'You are Forge, a Salesforce admin assistant. Describe the attached image concisely ' +
+    'You are OrgForge, a Salesforce admin assistant. Describe the attached image concisely ' +
     '(what it shows, any text/UI/config it contains, anything relevant to a Salesforce ' +
     'metadata change). The user\'s request is: ' +
     (hint ? `"${String(hint).slice(0, 2_000)}"` : '(none)') +

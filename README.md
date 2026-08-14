@@ -14,9 +14,9 @@ sibling repos were archived to `/Users/abhi/Enlight/archive/` (Pass 33). Live Su
 
 ```
 orgforge/
-├── frontend/                  # Next.js 16 app (port 3000) — @forge/web (@supabase/ssr middleware)
+├── frontend/                  # Next.js 16 app (port 3000) — @orgforge/web (@supabase/ssr middleware)
 │   └── src/                   # app router pages, components, lib, middleware.ts
-├── backend/                   # ONE Express 5 entry (port 3001) — @forge/api, native ESM
+├── backend/                   # ONE Express 5 entry (port 3001) — @orgforge/api, native ESM
 │   ├── src/
 │   │   ├── routes/            # unified capability routes (chat, agents, diagnostics, …)
 │   │   ├── engines/           # agentEngine + orgEngine (route to the ported engines)
@@ -52,4 +52,4 @@ npm test                    # runs all package tests (workspaces)
 
 `npm run dev` uses `concurrently` — prefixed logs (`[backend]` / `[frontend]`),
 Ctrl+C stops both. The backend dev/start scripts enable the capability flag
-(`FORGE_UNIFIED_API=on`) so the web app's APIs are fully mounted.
+(`ORGFORGE_UNIFIED_API=on`) so the web app's APIs are fully mounted.

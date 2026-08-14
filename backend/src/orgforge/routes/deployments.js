@@ -1,13 +1,13 @@
 import express from 'express';
 import { z } from 'zod';
 import AdmZip from 'adm-zip';
-import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
+import { createAuthMiddleware, tenantIsolation } from '@orgforge/auth';
 const requireAuth = createAuthMiddleware();
 import { streamLimiter } from '../middleware/rateLimiter.js';
 import { metadataTransport } from '../services/metadataTransport.js';
 import { changeRecordService } from '../services/changeRecordService.js';
 import { rollbackService } from '../services/rollbackService.js';
-import { getOrgCredentials } from '@forge/org-connections';
+import { getOrgCredentials } from '@orgforge/org-connections';
 import { redisConnection, deploymentQueue } from '../jobs/queue.js';
 
 const router = express.Router();

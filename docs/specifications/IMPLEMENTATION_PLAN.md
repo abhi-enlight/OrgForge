@@ -1,4 +1,4 @@
-# Forge — Implementation Plan (Master)
+# OrgForge — Implementation Plan (Master)
 
 > **Source of truth:** [`unification_plan.md`](./unification_plan.md) (design) +
 > [`DECISIONS.md`](./DECISIONS.md) (locked decisions D1–D8).
@@ -18,7 +18,7 @@
 > `package.installed=false` is never pinned, reads self-heal after install);
 > Pass 23 added the forge-schema verifier (`backend/scripts/verifySchema.mjs`);
 > Pass 32 made the repo one self-contained app (OrgForge + Agentforge ported
-> in-repo, `@forge/compat` retired); Pass 34 re-homed the OrgForge service unit
+> in-repo, `@orgforge/compat` retired); Pass 34 re-homed the OrgForge service unit
 > tests; Pass 35 added the agentforge offline smoke + worker-boot guard; the
 > 2026-08-14 cleanup pass removed the legacy alias routers + transition deps
 > and **EC-37** landed agent-deploy audit records (migration `014`, backend
@@ -40,7 +40,7 @@
 | Migrations `008`/`010` SQL | ✅ **Applied live via MCP (Pass 43)** — 6 `orgforge.*` tables + RLS policies verified (`org_connections`, `agents`, `chat_sessions`, `routing_log`, `diagnostics`, `ai_logs`) |
 | Migrations `011`–`013` SQL | ✅ **Applied live via MCP (Pass 51)** — `orgforge.github_connections` (011), `chat_sessions` memory columns (012), five data tables (013); schema exposed in `pgrst.db_schemas` + grants for all API roles; **strict orgforge isolation live**: 12/12 tables reachable, RLS intact, public duplicates gone |
 | `frontend` — Next 16 + Tailwind v4 shell, auth gate, login + 3-step onboarding, dashboard, Copilot, Agents | ✅ tsc/lint/build; smoke-verified (10 static routes + `/`→`/dashboard`) |
-| Canary: `FORGE_UNIFIED_FRONTEND=on` flag + stub rule-based classifier chip (§14.2 Phase 1) | ✅ flag-on build serves `/chat`; stub `classifyWithStub` in `packages/ai` |
+| Canary: `ORGFORGE_UNIFIED_FRONTEND=on` flag + stub rule-based classifier chip (§14.2 Phase 1) | ✅ flag-on build serves `/chat`; stub `classifyWithStub` in `packages/ai` |
 | Conversation state (§7.3): Redis lock + persistence | ✅ token-owned SET-NX-PX lock (600s TTL, atomic Lua owner-checked release), in-memory degrade when Redis is down, live-Redis smoke verified |
 | `ai_logs` unification: single writer in `packages/ai` → `forge.ai_logs` | ✅ `writeAiLog` wired into chat/stream agent + org steps (success + failure rows) |
 | **402/402** unified tests (incl. the re-homed OrgForge service tests in `backend/src/orgforge`, Pass 34) | ✅ |
@@ -69,8 +69,8 @@
 ### API
 - [x] `backend/src/app.js` `createApp()` factory: helmet, CORS, morgan, 10mb json, flag-gated session, health, JSON 404, sanitized error handler
 - [x] `backend/src/index.js` thin entry; mount failure → `exit(1)` when flags are ON
-- [x] OrgForge routers mounted at `/api/v1/*` (behind `FORGE_UNIFIED_API=on`)
-- [x] Agentforge routers mounted at legacy `/api/auth`, `/api/org` (behind `FORGE_MOUNT_AGENTFORGE=on`) — Pass 32: from the ported `backend/src/agentforge/routes/` (ESM); the compat adapter is gone
+- [x] OrgForge routers mounted at `/api/v1/*` (behind `ORGFORGE_UNIFIED_API=on`)
+- [x] Agentforge routers mounted at legacy `/api/auth`, `/api/org` (behind `ORGFORGE_MOUNT_AGENTFORGE=on`) — Pass 32: from the ported `backend/src/agentforge/routes/` (ESM); the compat adapter is gone
 - [x] `POST /api/v1/auth/link-legacy` wired (§8.4) with zod validation
 - [ ] **🔷 SUPABASE TASK:** apply `010_forge_legacy_rpc.sql` so `get_connections_by_agentforge_user` / `delete_salesforce_connection_by_user` exist (re-link won't work without them)
 - [x] Add `GET /api/v1/health/db` (Pass 13) — `healthRouter` in `backend/src/routes/health.js`: liveness `/api/v1/health` + readiness over the 6 `forge.*` tables from 008 incl. `ai_logs` (Pass 14) (missing-table → 503 with the list + `migrationPending` when the schema is absent; any other DB error → 500 fail-loud)
@@ -160,17 +160,17 @@
 - [x] Scaffold `frontend` (Next.js 16 + Tailwind v4 `@theme`) + added to root workspaces + `dev:web`/`lint`/`typecheck` scripts; build passes (8 static routes + `/` → `/dashboard` 307)
 - [x] Global `AppShell`/`Sidebar`/`Header` (OrgForge slimmed to 5 items, §6.1) with org pill + avatar
 - [x] Login page (Supabase) + 3-step onboarding: sign-in → connect Salesforce (Prod/Sandbox/Scratch OAuth) → optional GitHub (§12.2)
-- [x] Dashboard: hero "Ask Forge" + 3 stat tiles + attention banner + unified activity feed (§6.2)
+- [x] Dashboard: hero "Ask OrgForge" + 3 stat tiles + attention banner + unified activity feed (§6.2)
 - [x] Copilot: port Agentforge `chat/page.tsx` (SSE reader, markdown, CodeBlock, BuildProgressCard) + capability chip (§6.3) — `lib/chat-stream.ts` + `components/chat/*`; pins routeIntent (Auto/Agent/Org Change/Both); grouped progress cards; clarify short-circuit renders natively; no-org → connect CTA
 - [x] Inline org-change cards in chat (§6.3): orgEngine rewritten as a staged orchestrator over OrgForge's real services (parse → generate → impact → gates → dry-run → deploy → record), honest per-stage gaps, `artifact`/`blast_radius`/`refusal_gates`/`dry_run`/`deploy`/`record` SSE cards rendered by `OrgChangeCard` (6 tests)
 - [x] Agents page (read-only over `GET /api/v1/agents` — live list via tenant creds + Agentforge `SalesforceClient`, SSRF-guarded, 7 route tests) — **🔷 SUPABASE TASK (remaining):** `forge.agents` cache table comes with 008; populate from `sfClient.getAgents` + deploy events to replace the live call; dashboard agents tile now fetches this route
 - [x] Changes & Audit page (OrgForge history renamed — search + status filters + expandable signed-record cards over `GET /api/v1/change-records`) + Settings (Connections with disconnect + Integrations/GitHub install + repo picker with the D8 audit-status indicator + Advanced) — Suspense-wrapped; `org-context` setters memoized
 - [x] Design tokens: Tailwind v4 `@theme` with OrgForge `brand-*` mapping (§6.5)
 - [x] GitHub onboarding step: install URL + repo picker + skip path (§12.3) — shared `GithubConnectCard` (Settings + login step 3); **persistent audit-status indicator (D8)** — "Audit records committed to `<repo>`" vs "saved locally"
-- [x] `FORGE_UNIFIED_FRONTEND=on` canary flag + stub rule-based classifier chip (Pass 12) — `NEXT_PUBLIC_FORGE_UNIFIED_FRONTEND` gate in `lib/flags.ts`; canonical zero-dep `classifyWithStub` in `packages/ai` (mirrors §7.1 overrides via shared `overrides.js`, 9 tests); live rule-based routing preview in `CapabilityChip` (labeled "Stub", pin still wins, never sent to the server)
+- [x] `ORGFORGE_UNIFIED_FRONTEND=on` canary flag + stub rule-based classifier chip (Pass 12) — `NEXT_PUBLIC_ORGFORGE_UNIFIED_FRONTEND` gate in `lib/flags.ts`; canonical zero-dep `classifyWithStub` in `packages/ai` (mirrors §7.1 overrides via shared `overrides.js`, 9 tests); live rule-based routing preview in `CapabilityChip` (labeled "Stub", pin still wins, never sent to the server)
 
 ### Migration & ops
-- [x] Copy/brand audit (§11.3): grep `agentforge\|orgforge` in `frontend/src` UI strings — clean (provenance comments only); metadata/title/OG = "Forge"; chat greeting = "Forge copilot"
+- [x] Copy/brand audit (§11.3): grep `agentforge\|orgforge` in `frontend/src` UI strings — clean (provenance comments only); metadata/title/OG = "OrgForge"; chat greeting = "OrgForge copilot"
 - [x] `.env.example` finalized; `SESSION_SECRET`/`LEGACY_JWT_SECRET` marked transition-only
 - [x] `npm run typecheck` merged; per-app lint (`frontend`: tsc + eslint clean)
 
@@ -182,7 +182,7 @@
 - [x] Stop legacy frontend + API deploys (**done 2026-08-14**, ahead of the 301 step — no rollback-to-legacy; 301s are now time-critical)
 - [x] Remove the legacy `/api/auth` + `/api/org` alias mounts (**done 2026-08-14** — `enableAgentforge` block + express-session middleware removed from `app.js`; dead alias routers deleted)
 - [ ] **🔷 SUPABASE TASK:** after sign-off — drop legacy `public.salesforce_connections` / old `orgforge` views (additive-first; never delete before sign-off)
-- [x] Delete `LEGACY_JWT_SECRET`, `SESSION_SECRET`, `FORGE_MOUNT_AGENTFORGE` block (**done 2026-08-14** — env files + docs swept; `express-session` dep removed)
+- [x] Delete `LEGACY_JWT_SECRET`, `SESSION_SECRET`, `ORGFORGE_MOUNT_AGENTFORGE` block (**done 2026-08-14** — env files + docs swept; `express-session` dep removed)
 - [ ] Optional: rename internal identifiers (npm names, schemas) — explicitly out of merge scope
 
 ---
@@ -214,7 +214,7 @@
 7. ✅ Changes & Audit + Settings pages (done — signed-record trail + Connections/GitHub/Advanced; SSR smoke 200, lint/tsc/build clean)
 8. ✅ Inline org-change cards in chat (done — orgEngine pipeline stages + 6 card types; 6 tests)
 9. ✅ **S-2 code wiring (Passes 10–11)** — `forge.agents` read-through cache, `routing_log` + diagnostics + `chat_sessions` fail-loud (missing table degrades; other errors throw); session spine (§7.3) with stable per-org session ids; backend **136/136**; 🔷 apply migration 008 via MCP next
-9b. ✅ **Canary flag + stub classifier (Pass 12)** — `FORGE_UNIFIED_FRONTEND=on` + rule-based stub chip (§14.2 Phase 1); backend **145/145**
+9b. ✅ **Canary flag + stub classifier (Pass 12)** — `ORGFORGE_UNIFIED_FRONTEND=on` + rule-based stub chip (§14.2 Phase 1); backend **145/145**
 10. ✅ **Redis conversation state + unified ai_logs (Pass 14)** — §7.3 busy-lock + state persistence (token-owned release, in-memory degrade) + `writeAiLog` in packages/ai wired to both engine steps; backend **177/177**; live-Redis smoke verified
 11. ✅ **EC-14 invalidateAndRecheck (Pass 15)** — diagnostics cache invalidated on 401/403 via the refresh-failure hook; backend **183/183**
 12. ✅ **multer file-attach (Pass 16)** — chat/stream accepts documents (pdf/docx/txt/md) via multipart, injects extracted text into the engine prompt (legacy parity); frontend attach button + FormData client; backend **199/199**

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * verifySchema.mjs — Forge schema verifier (migrations 008, 011–014).
+ * verifySchema.mjs — OrgForge schema verifier (migrations 008, 011–014).
  *
  * Extends OrgForge's `backend/scripts/verifySchema.mjs` convention to the
  * unified `orgforge` schema. Verifies ALL TWELVE orgforge.* tables exist and
@@ -40,7 +40,7 @@ dotenv.config({ path: path.join(__dirname, '../../.env') });
  * (not hardcoded 'id') because github_connections is keyed on user_id and has
  * no id column.
  */
-export const FORGE_TABLES = {
+export const ORGFORGE_TABLES = {
   // ── 008 core schema (S-2) ────────────────────────────────────────────
   org_connections: [
     'id', 'user_id', 'org_id', 'org_type', 'alias', 'instance_url',
@@ -123,7 +123,7 @@ function extractMissingColumn(message) {
  *   ({ table, ok, missing?, permission?, missingColumns?, errorMessage? }) —
  *   throws on any non-classifiable DB error (fail-loud, repo convention).
  */
-export async function runVerification({ db, tables = FORGE_TABLES }) {
+export async function runVerification({ db, tables = ORGFORGE_TABLES }) {
   if (Object.keys(tables).length === 0) {
     throw new Error('verifySchema: no tables configured');
   }
@@ -222,7 +222,7 @@ async function main() {
     db: { schema: 'orgforge' }, // same orgforge-scoped client as the API (migration 008 / S-2)
   });
 
-  console.log('🔍 Verifying Forge Supabase schema (orgforge.* — migrations 008 + 011–014)...\n');
+  console.log('🔍 Verifying OrgForge Supabase schema (orgforge.* — migrations 008 + 011–014)...\n');
 
   const { ok, results } = await runVerification({ db });
 

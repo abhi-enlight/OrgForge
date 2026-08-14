@@ -2,10 +2,10 @@ import { sfApi } from './sfApi.js';
 
 // D7: single unified ECA = Agentforge's package. Check by SubscriberPackageId
 // (any installed version counts — EC-15). Default is Agentforge's known ECA
-// version id; override via FORGE_ECA_PACKAGE_VERSION_ID if the unified ECA
+// version id; override via ORGFORGE_ECA_PACKAGE_VERSION_ID if the unified ECA
 // ships a new version.
 const DEFAULT_PACKAGE_VERSION_ID =
-  process.env.FORGE_ECA_PACKAGE_VERSION_ID || '04tfj000000NNITAA4';
+  process.env.ORGFORGE_ECA_PACKAGE_VERSION_ID || '04tfj000000NNITAA4';
 
 // ── Shared state machine (plan §12.4) ─────────────────────────────────────
 // checking → ok | attention(missing_package | license_unsupported |
@@ -236,7 +236,7 @@ export async function checkPackageInstalled(token, instanceUrl, packageVersionId
     //    connector is installed as an UNMANAGED package (never listed in
     //    InstalledSubscriberPackage) or the pinned 033/04t ids don't match the
     //    version the admin installed. The External Client Application is the
-    //    signal that actually matters — it is the OAuth client Forge
+    //    signal that actually matters — it is the OAuth client OrgForge
     //    authenticates through, and it exists in exactly the orgs where the
     //    connector was set up. Best-effort: a query failure (unsupported
     //    surface) keeps the package verdict instead of flipping it.

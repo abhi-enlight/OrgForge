@@ -59,19 +59,19 @@
 
 ### 2.2 Names
 
-The requirement: **remove "Agent Forge" and "OrgForge" from everything the user sees.** Suggested replacement names (shortlist):
+The requirement: **remove "Agent OrgForge" and "OrgForge" from everything the user sees.** Suggested replacement names (shortlist):
 
 | Candidate | Why it works |
 |---|---|
-| **Enlight Forge** (or simply **Forge**) | Neutral, keeps the family identity, one word for one product |
-| **ForgeOne** | Emphasizes "one product" |
+| **Enlight OrgForge** (or simply **OrgForge**) | Neutral, keeps the family identity, one word for one product |
+| **OrgForgeOne** | Emphasizes "one product" |
 | **Enlight Console** | Admin-tool framing, matches dashboard-first UX |
-| **Forge Studio** | "Studio" signals build + create + manage |
+| **OrgForge Studio** | "Studio" signals build + create + manage |
 
-Recommendation: **"Forge" by Enlight Lab** (with `Enlight Forge` as the full brand), because it lets both legacy capabilities live as internal feature names ("Agents" and "Org Changes") rather than product names.
+Recommendation: **"OrgForge" by Enlight Lab** (with `Enlight OrgForge` as the full brand), because it lets both legacy capabilities live as internal feature names ("Agents" and "Org Changes") rather than product names.
 
 **Renaming scope (do not touch code identifiers):**
-- Replace in **user-visible strings only**: UI copy, chat greeting ("Hi, I'm your Agentforge AI assistant" → "Hi, I'm your Forge copilot"), metadata `<title>`/OG tags, landing pages, READMEs, docs, `BRAND.md`, favicon/logo alt text, email digests, `.agent` YAML `description` strings.
+- Replace in **user-visible strings only**: UI copy, chat greeting ("Hi, I'm your Agentforge AI assistant" → "Hi, I'm your OrgForge copilot"), metadata `<title>`/OG tags, landing pages, READMEs, docs, `BRAND.md`, favicon/logo alt text, email digests, `.agent` YAML `description` strings.
 - **Keep internal identifiers unchanged** during migration: npm package names (`agentforge`, `orgforge-workspace`), Supabase schemas (`orgforge.*`), route prefixes, env var names, queue names, `AGENTS.md`. Renaming identifiers is a later, optional cleanup — never part of the merge.
 - Add a **copy audit checklist** (§11.3) so no "Agentforge"/"OrgForge" string survives in the shipped UI.
 
@@ -183,7 +183,7 @@ Audited from the two codebases (June–Aug 2026 state):
                                        │ same-origin /api/v1/* (rewrite)
                                        ▼
         ┌────────────────────────────────────────────────────────────────┐
-        │  ONE Express API  (:3001)   — "Forge API"                      │
+        │  ONE Express API  (:3001)   — "OrgForge API"                      │
         │  ┌──────────────────────────────────────────────────────────┐  │
         │  │ authMiddleware (Supabase JWT) → req.user (auth.users.id) │  │
         │  │ tenantIsolation → RLS-scoped client                      │  │
@@ -213,16 +213,16 @@ Audited from the two codebases (June–Aug 2026 state):
 ### 5.1 Native one-folder architecture (no more mounted legacy engines)
 **Implemented (Passes 32–33).** Both legacy engines are now **first-class in-repo modules**, not externally mounted routers:
 
-- OrgForge's backend lives at **`backend/src/orgforge/`** — its 9 routers, BullMQ jobs + workers, services (aiOrchestrator, skillResolver, refusalGateEngine, impactAnalyzer, changeRecordService, metadataTransport, …) and utils, with auth rebased onto the shared `@forge/auth` middleware (`createAuthMiddleware`/`tenantIsolation` — identical `req.user`/`req.tenantId`/`req.supabaseClient` contract; OrgForge's duplicated middleware deleted).
+- OrgForge's backend lives at **`backend/src/orgforge/`** — its 9 routers, BullMQ jobs + workers, services (aiOrchestrator, skillResolver, refusalGateEngine, impactAnalyzer, changeRecordService, metadataTransport, …) and utils, with auth rebased onto the shared `@orgforge/auth` middleware (`createAuthMiddleware`/`tenantIsolation` — identical `req.user`/`req.tenantId`/`req.supabaseClient` contract; OrgForge's duplicated middleware deleted).
 - Agentforge's engine lives at **`backend/src/agentforge/`** — the `ConversationManager`, `salesforceClient`, and supporting services converted **CJS→ESM** by the `backend/scripts/portAgentforge.mjs` codemod.
-- **No `../OrgForge` / `../Agentforge` import exists anywhere**; the `@forge/compat` CJS adapter was retired (§5.2). The legacy sibling repos were archived to `/Users/abhi/Enlight/archive/` (Pass 33) — the app is fully self-contained.
-- **One process:** `backend/src/index.js` mounts the ported routers natively, starts the 4 BullMQ job workers, and registers the nightly self-improvement job (all gated on `FORGE_UNIFIED_API=on`).
-- **Route surface unchanged:** OrgForge's `/api/v1/*` paths stay byte-identical. Agentforge's capability routes live under `/api/v1/agents/*` + `/api/v1/chat/stream`, and the legacy `/api/auth` + `/api/org` alias mounts are still served from the ported routers behind `FORGE_MOUNT_AGENTFORGE=on` for the transition.
+- **No `../OrgForge` / `../Agentforge` import exists anywhere**; the `@orgforge/compat` CJS adapter was retired (§5.2). The legacy sibling repos were archived to `/Users/abhi/Enlight/archive/` (Pass 33) — the app is fully self-contained.
+- **One process:** `backend/src/index.js` mounts the ported routers natively, starts the 4 BullMQ job workers, and registers the nightly self-improvement job (all gated on `ORGFORGE_UNIFIED_API=on`).
+- **Route surface unchanged:** OrgForge's `/api/v1/*` paths stay byte-identical. Agentforge's capability routes live under `/api/v1/agents/*` + `/api/v1/chat/stream`, and the legacy `/api/auth` + `/api/org` alias mounts are still served from the ported routers behind `ORGFORGE_MOUNT_AGENTFORGE=on` for the transition.
 - Old production URLs keep working until the flag flips; then they 301 to the new domain (Phase 5 §4.3).
 
 ### 5.2 Module-system bridge (CommonJS ↔ ESM) — resolved (Pass 32)
 - The interim bridge is **gone**: Agentforge's CJS sources were converted to **ESM** (the `backend/scripts/portAgentforge.mjs` codemod — top-level `require()` → `import` with `.js` extensions, `module.exports = {a, b}` → `export {a, b}`, `module.exports = new X()` → `export default`, `require('dotenv').config()` → `import 'dotenv/config'`). The entire API is ESM end to end.
-- `packages/compat/cjsRouter.js` (the CJS adapter) was deleted with its last consumer — `@forge/compat` was removed from the workspace (PHASE5 §4.1 executed early).
+- `packages/compat/cjsRouter.js` (the CJS adapter) was deleted with its last consumer — `@orgforge/compat` was removed from the workspace (PHASE5 §4.1 executed early).
 
 ### 5.3 Shared services to extract first (highest leverage, lowest risk)
 1. `packages/auth` — `requireAuth` (Supabase `getUser`), `tenantIsolation`, token-in-query only for GET/SSE.
@@ -233,7 +233,7 @@ Audited from the two codebases (June–Aug 2026 state):
 
 ### 5.4 What stays separate (deliberately)
 - The two **LLM system prompts** stay in their own modules (fine-tuned and huge). Only the routing layer is new.
-- BullMQ worker files stay per-capability, all started from the one unified process (`backend/src/orgforge/workers.js`, gated on `FORGE_UNIFIED_API=on`).
+- BullMQ worker files stay per-capability, all started from the one unified process (`backend/src/orgforge/workers.js`, gated on `ORGFORGE_UNIFIED_API=on`).
 
 ### 5.5 Ports & dev environment
 - Unified API on **:3001**; unified frontend on **:3000** (rewrites `/api/*` → `:3001`).
@@ -248,7 +248,7 @@ Audited from the two codebases (June–Aug 2026 state):
 
 The merged product must feel **lighter than either legacy app**. Every screen follows these rules:
 
-1. **One primary action per screen.** The dashboard has exactly one hero action ("Ask Forge"); the chat has one input; onboarding has one "next" button. Everything else is secondary.
+1. **One primary action per screen.** The dashboard has exactly one hero action ("Ask OrgForge"); the chat has one input; onboarding has one "next" button. Everything else is secondary.
 2. **Two levels of depth max.** The happy path lives on one page. Anything deeper (the 10-stage workspace, per-org capability toggles, GitHub internals) is hidden behind an explicit "Advanced" affordance (progressive disclosure).
 3. **Copilot-first, list-pages-second.** Building agents and requesting org changes both happen in the **Chat**. The Agents and Changes pages are quiet read-only lists that link back into chat. No duplicated forms.
 4. **Say it in one sentence.** Every panel gets a one-line plain-English caption. No jargon chips (`ECA VAULT ACTIVE`, `REF-04`, `SESSION ACTIVE`) in the default view — technical detail moves into tooltips and the Advanced view.
@@ -259,7 +259,7 @@ The merged product must feel **lighter than either legacy app**. Every screen fo
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│ TOP BAR   [☰]  FORGE ······················ [org pill] [avatar ▾] │
+│ TOP BAR   [☰]  ORGFORGE ······················ [org pill] [avatar ▾] │
 ├───────────┬────────────────────────────────────────────────────────┤
 │ SIDEBAR   │                                                        │
 │ ◆ Dashboard                                                       │
@@ -278,12 +278,12 @@ The merged product must feel **lighter than either legacy app**. Every screen fo
 
 Layout (max 4 sections, in order):
 
-1. **Hero row** — "Welcome back" + one big **Ask Forge** button (primary action) + the org pill. That's it.
+1. **Hero row** — "Welcome back" + one big **Ask OrgForge** button (primary action) + the org pill. That's it.
 2. **Three stat tiles** (clickable, link to the list page): **Agents** (count + last deployed), **Open changes** (count + 1 awaiting approval), **Audit trail** (recent record). Clicking a tile deep-links into chat with a pre-filled prompt ("List my agents", "What changes are pending?").
 3. **One attention banner** — only when something is wrong (package missing, license unsupported, org disconnected, indexing stale). One action per banner (§12.4).
 4. **Recent activity feed** — the only scrolling list: agent builds/deploys + org change records in one reverse-chronological feed, rendered by one shared `ActivityCard`. This is where "two products" most often leaks — both event types must use one visual language.
 
-Empty states: no org → single "Connect Salesforce" CTA (the whole dashboard collapses to one button). No agents → "Ask Forge to build your first agent". No changes → "Request a governed change".
+Empty states: no org → single "Connect Salesforce" CTA (the whole dashboard collapses to one button). No agents → "Ask OrgForge to build your first agent". No changes → "Request a governed change".
 
 ### 6.3 The Chat (Copilot) — the center of everything
 
@@ -570,8 +570,8 @@ unified-forge/
 
 ### 11.3 Brand/copy audit checklist
 
-- [ ] Replace "Agentforge"/"Agent Forge" in all UI strings, chat greeting, metadata titles/OG/twitter, README/BRAND.md, `AGENTS.md`, email digest templates
-- [ ] Replace "OrgForge" similarly (incl. Header "Governance v1.0" pill → "Forge v1")
+- [ ] Replace "Agentforge"/"Agent OrgForge" in all UI strings, chat greeting, metadata titles/OG/twitter, README/BRAND.md, `AGENTS.md`, email digest templates
+- [ ] Replace "OrgForge" similarly (incl. Header "Governance v1.0" pill → "OrgForge v1")
 - [ ] Update favicons/og-image/logo alt text; keep *asset files* (URLs in env, e.g. `ai-mvp.enlightlab.com/logo.png`) pointing at the same CDN so nothing 404s
 - [ ] Update `metadataBase`, canonical, `robots` for the new domain
 - [ ] Grep the built bundle before shipping: `grep -ri "orgforge\|agentforge" frontend/src` should return only code identifiers deliberately kept
@@ -701,7 +701,7 @@ Diagnostics state machine (shared by all surfaces): `checking → ok | attention
 | ID | Scenario | Why it breaks today | Unified behavior |
 |---|---|---|---|
 | EC-38 | Legacy re-link fails (no legacy token, expired) | Orgs "lost" | Re-connect is the guaranteed path; re-link is best-effort convenience (§8.4). Empty state explains: "Reconnect your orgs — they live in Salesforce, nothing is lost." |
-| EC-39 | **User runs both legacy apps and the unified app during cutover** | Writes to different schemas diverge | Transition rule: legacy apps remain **read-only display** (point their reads at `forge.*` views) once Phase 2 lands; show a banner in legacy apps: "You're using the previous version — continue in Forge." Writes only through the unified app during cutover. |
+| EC-39 | **User runs both legacy apps and the unified app during cutover** | Writes to different schemas diverge | Transition rule: legacy apps remain **read-only display** (point their reads at `forge.*` views) once Phase 2 lands; show a banner in legacy apps: "You're using the previous version — continue in OrgForge." Writes only through the unified app during cutover. |
 | EC-40 | Duplicate AI lessons (`public.ai_lessons` vs `orgforge.ai_lessons`) | Inconsistent guardrails | Merge + dedupe into `forge.ai_lessons` (dedupe by normalized text); one injector feeds both engines. |
 | EC-41 | Token/encryption key change | Stored tokens undecryptable | Chosen path: re-connect once (§9.3a). `ENCRYPTION_KEY` is generated fresh for the unified env; legacy tokens are never re-encrypted. |
 | EC-42 | HMAC secret rotation | Old records appear tampered | Verify each record with the secret recorded at signing time; new records use the new secret (OrgForge already stores signature only — keep schema). |
@@ -750,7 +750,7 @@ Diagnostics state machine (shared by all surfaces): `checking → ok | attention
 ### 14.1 Principles
 
 1. **Additive over destructive:** every change is additive (new schema, new routes, new frontend); nothing is dropped until two full release cycles after its replacement is proven.
-2. **Feature flags:** `FORGE_UNIFIED_FRONTEND`, `FORGE_UNIFIED_API`, `FORGE_ROUTER`. Old apps ship unchanged until flags flip.
+2. **Feature flags:** `ORGFORGE_UNIFIED_FRONTEND`, `ORGFORGE_UNIFIED_API`, `ORGFORGE_ROUTER`. Old apps ship unchanged until flags flip.
 3. **Dual-run verification:** every legacy flow has a checklist item proving the new flow produces the same outcome (§15.3).
 4. **Rollback path defined before each deploy:** stop serving the new frontend (flag off / 301 revert); legacy apps never lose deploy targets until Phase-5 sign-off.
 
@@ -762,7 +762,7 @@ Diagnostics state machine (shared by all surfaces): `checking → ok | attention
 - Deploy the unified Next.js app (marketing, login, dashboard, chat shell) pointing at a **gateway** that proxies to both existing backends (A2). New Supabase login; orgs list = OrgForge; chat = Agentforge behind the same origin.
 - Implement `link-legacy` + org re-link (§8.4).
 - Ship the capability chip with a **stub classifier** (rule-based only) — UX in place, zero AI risk.
-- Flag: `FORGE_UNIFIED_FRONTEND=on` for a canary group only.
+- Flag: `ORGFORGE_UNIFIED_FRONTEND=on` for a canary group only.
 
 **Phase 2 — Single API process (2–3 wks).**
 - Mount OrgForge + Agentforge routers in one Express entry (E1); run both test suites against the merged process.
@@ -843,7 +843,7 @@ Diagnostics state machine (shared by all surfaces): `checking → ok | attention
 
 ## 17. Open Decisions Needed From You
 
-1. **Product name** — confirm "Forge" (Enlight Forge) or pick another from §2.2. ( go with forge)
+1. **Product name** — confirm "OrgForge" (Enlight OrgForge) or pick another from §2.2. ( go with forge)
 2. **Session storage** — OK to move Supabase session to httpOnly cookies in production (recommended), or keep localStorage + CSP hardening for v1? (recommended)
 3. **Scope of Salesforce `full` permission** — keep for parity (recommended short-term) or trim and test provisioning impact?    (explain)
 4. **Encryption-key migration** — confirm "re-connect orgs once" (recommended) vs server-side re-encryption. (recommended)

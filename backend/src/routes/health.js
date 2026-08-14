@@ -12,7 +12,7 @@ import { forgeDb as forgeDbSingleton } from '../lib/supabaseClients.js';
  * OAuth flow writes). It stays in this list only because 008 still creates it
  * (this gate doubles as "is 008 applied"). See supabase/migrations/README.md.
  */
-const FORGE_TABLES = [
+const ORGFORGE_TABLES = [
   'org_connections',
   'agents',
   'chat_sessions',
@@ -50,7 +50,7 @@ export function createHealthRouter({ forgeDbFactory = () => forgeDbSingleton } =
       const missingTables = [];
       let sawMissingSchema = false;
 
-      for (const table of FORGE_TABLES) {
+      for (const table of ORGFORGE_TABLES) {
         const { error } = await forgeDb.from(table).select('id').limit(1);
         if (!error) continue;
         if (!isMissingTableError(error)) {

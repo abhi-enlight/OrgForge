@@ -2,15 +2,15 @@ import { Router } from 'express';
 import { z } from 'zod';
 import multer from 'multer';
 import { createHash } from 'node:crypto';
-import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
+import { createAuthMiddleware, tenantIsolation } from '@orgforge/auth';
 import { forgeDb, publicDb as credsDbSingleton } from '../lib/supabaseClients.js';
-import { routeIntent, createSseEnvelope, writeAiLog, describeImage as describeImageDefault } from '@forge/ai';
+import { routeIntent, createSseEnvelope, writeAiLog, describeImage as describeImageDefault } from '@orgforge/ai';
 import {
   validateInstanceUrl,
   getDiagnostics as getDiagnosticsDefault,
   runPreFlightCheck as preFlightDefault,
-} from '@forge/diagnostics';
-import { getOrgCredentials } from '@forge/org-connections';
+} from '@orgforge/diagnostics';
+import { getOrgCredentials } from '@orgforge/org-connections';
 import { setupSse } from '../lib/sseEmitter.js';
 import { isMissingTableError } from '../lib/isMissingTable.js';
 import { appendChatSegment, getChatSession, buildSessionDigest } from '../lib/chatSessions.js';

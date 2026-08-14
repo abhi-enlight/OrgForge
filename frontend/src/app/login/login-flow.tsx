@@ -6,7 +6,7 @@ import { Zap, Cloud, FlaskConical, Check, ArrowRight, ArrowLeft, Github, Loader2
 import { supabase } from '@/lib/supabase';
 import { apiFetch, getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { ForgeLogo } from '@/components/brand/ForgeLogo';
+import { OrgForgeLogo } from '@/components/brand/OrgForgeLogo';
 import GithubConnectCard from '@/components/settings/GithubConnectCard';
 import PackageInstallModal from '@/components/org/PackageInstallModal';
 import type { PackageHealth } from '@/lib/orgHealth';
@@ -127,7 +127,19 @@ export default function LoginFlow() {
   // to the code itself so the user still sees something actionable).
   const oauthErrorMessage = oauthError ? OAUTH_ERROR_MESSAGES[oauthError] || oauthError : null;
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  // Initialize directly to the URL-pinned step (2/3) when present, so the
+  // OAuth callback and header/CTA deep links render the correct step on
+  // first paint instead of flashing the step-1 sign-in form while the
+  // position effect below resolves asynchronously. Plain /login starts at 1
+  // and the position gate below holds the UI until that check completes — a
+  // signed-in user is re-routed to step 2/3 without ever seeing the form.
+  const [step, setStep] = useState<1 | 2 | 3>(() =>
+    requestedStep === 2 || requestedStep === 3 ? requestedStep : 1
+  );
+  // True only while a plain /login visit is resolving the correct step (the
+  // async session + org check decides 1/2/3). False from the start for
+  // URL-pinned steps, which render immediately.
+  const [resolvingPosition, setResolvingPosition] = useState(requestedStep === 1);
   // ECA-not-installed flow: the OAuth callback redirects with
   // error=ECANotInstalled&installUrl=...&orgType=... when Salesforce refused
   // sign-in because the OrgForge Connector ECA is missing from the org — the
@@ -183,12 +195,15 @@ export default function LoginFlow() {
   }, []);
 
   // Recover position: signed-in users jump past step 1; ?step=2/3 (from the
-  // header / connect CTA) jumps straight to that step.
+  // header / connect CTA) jumps straight to that step. Releasing the
+  // position gate at the end of both branches hands off to the resolved
+  // step with no wrong-step flash.
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session) {
         if (requestedStep === 2 || requestedStep === 3) setStep(requestedStep);
+        setResolvingPosition(false);
         return;
       }
       const connected = await hasConnectedOrgs();
@@ -198,6 +213,7 @@ export default function LoginFlow() {
       } else {
         setStep(requestedStep === 3 ? 3 : 2);
       }
+      setResolvingPosition(false);
     })();
   }, [requestedStep, router]);
 
@@ -364,12 +380,26 @@ export default function LoginFlow() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           {/* Logo → back to the landing page */}
-          <ForgeLogo href="/" size="lg" className="justify-center mb-4" />
+          <OrgForgeLogo href="/" size="lg" className="justify-center mb-4" />
           <p className="text-sm text-slate-500 mt-1">
             Salesforce AI agents &amp; governed org changes
           </p>
         </div>
 
+        {/* Position gate: while a plain /login visit resolves the correct
+            step (async session + org check), hold the UI on a lightweight
+            loader instead of flashing the step-1 form/indicator. URL-pinned
+            steps (2/3) never enter the gate, so the OAuth callback and deep
+            links render the right step on first paint. */}
+        {resolvingPosition ? (
+          <div className="bg-white rounded-2xl border border-brand-border shadow-lift p-6 space-y-4 animate-slide-up">
+            <div className="flex items-center justify-center gap-2 py-10">
+              <Loader2 className="w-5 h-5 text-brand-blue animate-spin" />
+              <span className="text-sm text-slate-500">Checking your session…</span>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* Step indicator */}
         <div className="flex items-center justify-center gap-2 mb-8">
           {Steps.map((s) => (
@@ -473,7 +503,7 @@ export default function LoginFlow() {
             </button>
 
             <p className="text-sm text-slate-500 text-center">
-              {isSignUp ? 'Already have an account?' : "New to Forge?"}{' '}
+              {isSignUp ? 'Already have an account?' : "New to OrgForge?"}{' '}
               <button
                 type="button"
                 onClick={() => setIsSignUp((v) => !v)}
@@ -491,7 +521,7 @@ export default function LoginFlow() {
             <div>
               <h2 className="font-semibold text-brand-dark">Connect Salesforce</h2>
               <p className="text-sm text-slate-500 mt-0.5">
-                Pick the org type. Forge signs you in with Salesforce and checks everything else in the background.
+                Pick the org type. OrgForge signs you in with Salesforce and checks everything else in the background.
               </p>
             </div>
 
@@ -617,7 +647,7 @@ export default function LoginFlow() {
                 <Check className="w-6 h-6 text-brand-pass" />
               </span>
               <h2 className="font-semibold text-brand-dark">You&apos;re all set</h2>
-              <p className="text-sm text-slate-500 mt-1">Ask Forge to build an agent or make an org change.</p>
+              <p className="text-sm text-slate-500 mt-1">Ask OrgForge to build an agent or make an org change.</p>
             </div>
 
             <div className="rounded-xl border border-brand-border bg-brand-surface/50 p-4">
@@ -659,9 +689,11 @@ export default function LoginFlow() {
             </button>
           </div>
         )}
+          </>
+        )}
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          Forge · Enlight Lab · {new Date().getFullYear()}
+          OrgForge · Enlight Lab · {new Date().getFullYear()}
         </p>
       </div>
 

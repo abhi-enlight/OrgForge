@@ -31,7 +31,7 @@ import {
  */
 export type TemplateKind = 'agent' | 'change';
 
-export interface ForgeTemplate {
+export interface OrgForgeTemplate {
   id: string;
   kind: TemplateKind;
   title: string;
@@ -43,7 +43,7 @@ export interface ForgeTemplate {
   icon: typeof Headset;
 }
 
-export const AGENT_TEMPLATES: ForgeTemplate[] = [
+export const AGENT_TEMPLATES: OrgForgeTemplate[] = [
   {
     id: 'customer-support',
     kind: 'agent',
@@ -154,7 +154,7 @@ export const AGENT_TEMPLATES: ForgeTemplate[] = [
   },
 ];
 
-export const CHANGE_TEMPLATES: ForgeTemplate[] = [
+export const CHANGE_TEMPLATES: OrgForgeTemplate[] = [
   {
     id: 'validation-rule',
     kind: 'change',

@@ -1,7 +1,7 @@
 # Installing the OrgForge Connector (Packaged External Client App)
 
 The **OrgForge Connector** is the packaged External Client Application (ECA)
-that Forge uses to authenticate against your Salesforce org. It ships as a
+that OrgForge uses to authenticate against your Salesforce org. It ships as a
 Salesforce package: installing it once per org (as a System Administrator) is
 what unlocks both capabilities — **agent building** and **governed org
 changes**. Until it is installed, the app shows a "setup needed" state and the
@@ -76,11 +76,11 @@ override per environment:
 
 | Env var | Purpose | Default |
 |---|---|---|
-| `FORGE_ECA_PACKAGE_VERSION_ID` | The 04t package-version id used for the install link + detection | `04tfj000000QFHxAAO` (orgs/diagnostics) · `04tfj000000NNITAA4` (diagnostics preflight) |
+| `ORGFORGE_ECA_PACKAGE_VERSION_ID` | The 04t package-version id used for the install link + detection | `04tfj000000QFHxAAO` (orgs/diagnostics) · `04tfj000000NNITAA4` (diagnostics preflight) |
 | `ORGFORGE_PACKAGE_VERSION_ID` | Legacy alias for the above (still honored) | — |
 | `ORGFORGE_PACKAGE_ID` | The 033 SubscriberPackageId the package-health check queries | `033fj000000PqLBAA0` |
 
-> ⚠️ Keep `FORGE_ECA_PACKAGE_VERSION_ID` in sync across the three files, and
+> ⚠️ Keep `ORGFORGE_ECA_PACKAGE_VERSION_ID` in sync across the three files, and
 > make sure it is the version you actually distribute — a stale id is the #1
 > cause of the false "setup needed" in §6.
 

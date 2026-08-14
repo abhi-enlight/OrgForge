@@ -1,8 +1,8 @@
 import express from 'express';
-import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
+import { createAuthMiddleware, tenantIsolation } from '@orgforge/auth';
 const requireAuth = createAuthMiddleware();
 import { refusalGateEngine } from '../services/refusalGateEngine.js';
-import { getOrgCredentials } from '@forge/org-connections';
+import { getOrgCredentials } from '@orgforge/org-connections';
 import { impactAnalyzer } from '../services/impactAnalyzer.js';
 import { staticAnalyzer } from '../services/staticAnalysis.js';
 import fs from 'fs/promises';

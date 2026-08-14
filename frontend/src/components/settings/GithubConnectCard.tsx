@@ -67,7 +67,17 @@ export default function GithubConnectCard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [gettingInstallUrl, setGettingInstallUrl] = useState(false);
-  const [pendingInstallId, setPendingInstallId] = useState<string | null>(null);
+  // GitHub install callback (?github=install&installation_id=…): read the id
+  // SYNCHRONOUSLY on first paint so the repo picker renders immediately on
+  // the callback landing — instead of flashing the "Install" button for a
+  // tick while the effect below fetches the repo list (same no-flash pattern
+  // as the login/workspace OAuth snapshots). The mount effect still performs
+  // the repo fetch and scrubs the query params.
+  const [pendingInstallId, setPendingInstallId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get('github') === 'install' ? sp.get('installation_id') : null;
+  });
   const [repos, setRepos] = useState<RepoOption[]>([]);
   const [selectedRepo, setSelectedRepo] = useState('');
   const [reposLoading, setReposLoading] = useState(false);

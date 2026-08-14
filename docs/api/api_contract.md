@@ -1,4 +1,4 @@
-# Unified Forge — API Contract (frozen)
+# Unified OrgForge — API Contract (frozen)
 
 **Status:** FROZEN baseline — the single source of truth for the unified API surface.
 **Date:** Pass 18 (Phase 0 leftover). Any change to a documented endpoint, request, or response
@@ -236,13 +236,13 @@ contract is preserved verbatim (see §4). Changes around it:
 | `/api/v1/rollback` | `routes/rollback.js` (`POST /`) | OrgForge API.md §5.2 |
 | `/api/v1/change-records` | `routes/changeRecords.js` (`GET /`) | OrgForge API.md §5.1 |
 
-These are gated on `FORGE_UNIFIED_API=on` (capability phase flag, plan §5.1).
+These are gated on `ORGFORGE_UNIFIED_API=on` (capability phase flag, plan §5.1).
 
-~~**Transition aliases (Agentforge, gated on `FORGE_MOUNT_AGENTFORGE=on`):** `/api/auth`~~
+~~**Transition aliases (Agentforge, gated on `ORGFORGE_MOUNT_AGENTFORGE=on`):** `/api/auth`~~
 ~~(Agentforge auth router) and `/api/org` (orgHealth) mirror the legacy paths for one release~~
 ~~cycle. They serve the **legacy frontend only** and are deleted in Phase 5.~~
 **Removed (Phase 5, 2026-08-14):** the `/api/auth` + `/api/org` transition aliases and the
-`FORGE_MOUNT_AGENTFORGE` gate are gone — the legacy apps are decommissioned. No `/api/v1/*`
+`ORGFORGE_MOUNT_AGENTFORGE` gate are gone — the legacy apps are decommissioned. No `/api/v1/*`
 consumer is affected.
 
 ---
@@ -272,7 +272,7 @@ Dated entries for every contract change (per §6). Newest first.
 | Date | Change | Breaking? | Migration note |
 |---|---|---|---|
 | EC-37 (2026-08-14) | **Added** `kind` (`'org_change'` default / `'agent_deploy'`), `agentName`, `agentSnapshot` to `GET /api/v1/change-records` responses — agent deploys now produce signed records via the agent engine (`deploy_success` → signed `agent_deploy` record; failures surface as `deploy_warning`, never block the stream). Additive fields; existing org_change rows default to `kind: 'org_change'` | no — additive | Migration `014_change_records_agent_kind.sql` (adds `kind`/`agent_name`/`agent_snapshot` to `orgforge.change_records`); 🔷 apply via MCP |
-| Phase 5 decommission (2026-08-14) | **Removed** the legacy transition aliases `/api/auth` + `/api/org` (Agentforge auth + orgHealth routers) and the `FORGE_MOUNT_AGENTFORGE` gate; the `express-session` middleware and its `SESSION_SECRET` requirement are gone (§4 alias paragraph struck). Only the legacy surfaces were removed — no `/api/v1/*` consumer is affected | no — breaking-by-design for the legacy aliases only | None |
+| Phase 5 decommission (2026-08-14) | **Removed** the legacy transition aliases `/api/auth` + `/api/org` (Agentforge auth + orgHealth routers) and the `ORGFORGE_MOUNT_AGENTFORGE` gate; the `express-session` middleware and its `SESSION_SECRET` requirement are gone (§4 alias paragraph struck). Only the legacy surfaces were removed — no `/api/v1/*` consumer is affected | no — breaking-by-design for the legacy aliases only | None |
 | Pass 52 (Aug 2026) | **Docs only** — §2.5/§2.7 updated for Passes 46–51 (context memory, session history/resume, expiry job, schema rename `forge.*` → `orgforge.*`); contract shape unchanged | no | None |
 | Pass 50 (Aug 2026) | **Added** `GET /api/v1/chat/sessions` + `GET /api/v1/chat/sessions/:sessionId` (§2.7) — tenant-scoped session list (light: `sessionId`, `updatedAt`, `lastSummary`, `hasSummary`; missing table → `[]`) and full-spine restore (transcript parsed from JSONB + legacy string forms; foreign/unknown → 404). Powers the History picker resume flow | no — additive (new GETs; existing reset/stream untouched) | Reads `orgforge.chat_sessions` (008 + 012); 012 adds `transcript`/`context_summary` columns |
 | Pass 47 (Aug 2026) | **Behavioral (documentation)** — session spine now persists a bounded text-only `transcript` + flash-compressed `context_summary` per turn (migration 012); agent engine resumes cold starts from summary + recent tail; org engine gets the `priorContext` digest. No wire-shape change to §2.5 — the stream contract is unchanged | no — additive (durable memory behind the same endpoint) | 012 adds `transcript JSONB` + `context_summary TEXT` to `orgforge.chat_sessions` |

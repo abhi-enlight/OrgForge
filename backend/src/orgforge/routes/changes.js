@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
-import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
+import { createAuthMiddleware, tenantIsolation } from '@orgforge/auth';
 const requireAuth = createAuthMiddleware();
 import { aiOrchestrator } from '../services/aiOrchestrator.js';
 import { skillResolver } from '../services/skillResolver.js';

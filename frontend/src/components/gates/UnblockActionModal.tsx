@@ -37,7 +37,7 @@ function remediationCopy(gate: GateResult): string {
     case 'REF-07':
       return 'This is a production org. Enable production deployment mode and record the executive/approver identity that authorizes the write.';
     case 'REF-05':
-      return 'Forge cannot delete or modify records on your behalf. Clean up the violating records directly in Salesforce, then re-run the evaluation to confirm the gate passes.';
+      return 'OrgForge cannot delete or modify records on your behalf. Clean up the violating records directly in Salesforce, then re-run the evaluation to confirm the gate passes.';
     default:
       return 'Complete the required action listed under the unblock path, then re-run the evaluation to confirm the gate now passes.';
   }

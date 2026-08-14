@@ -1,4 +1,4 @@
-# Forge — Future Implementation
+# OrgForge — Future Implementation
 
 > **Purpose:** index of work scheduled for the **next version (Phase 6+)** — the
 > things the current version intentionally does not ship. Every item links to a
@@ -24,7 +24,7 @@
 | F-2 | **change_records `kind` + agent-deploy snapshot** (EC-37): extend change records to agent deploys (`kind: 'org_change' | 'agent_deploy'`, pre-deploy YAML/Apex snapshot columns) so agent builds get the same signed-record audit trail as org changes | 🟢 code done 2026-08-14 (migration 014 drafted; agent engine writes a signed record on deploy_success; Changes page shows the kind badge) — 🔷 apply migration 014 via MCP | `supabase/migrations/014_change_records_agent_kind.sql` |
 | F-3 | **EC-35 serialize + queue when both capabilities touch the same metadata** — a `both` run whose agent half and org half edit overlapping metadata must serialize instead of racing | 🟡 planned | `docs/architecture/unification_plan.md` |
 | F-4 | **Live-agent e2e against a real sandbox** — the org pipeline's 7 chat stages (build → gates → dry-run → deploy → signed record) executed end-to-end through `POST /api/v1/chat/stream` | 🟡 planned (blocked: real sandbox + Supabase user) | `tasks/remaining_tasks.md` (P2) + `docs/operations/PHASE5_PLAN.md` |
-| F-5 | ~~**EC-39 legacy read-only display mode** — legacy apps point reads at `forge.*` views with a "continue in Forge" banner~~ — **closed (2026-08-14)**: the legacy apps were decommissioned, so there is nothing to point at views | ~~🟡 planned~~ **moot** | `IMPLEMENTATION_PLAN.md` §3 |
+| F-5 | ~~**EC-39 legacy read-only display mode** — legacy apps point reads at `forge.*` views with a "continue in OrgForge" banner~~ — **closed (2026-08-14)**: the legacy apps were decommissioned, so there is nothing to point at views | ~~🟡 planned~~ **moot** | `IMPLEMENTATION_PLAN.md` §3 |
 | F-6 | **P2 schema grounding for dry-run repairs** — best-effort live org-schema fetch into the repair prompt so `needs_schema` cases ("No such column…") are resolved or stated precisely; degrade to the honest reason when the fetch fails | 🟡 planned (stretch, part of F-1) | [`DRY_RUN_AUTO_REPAIR.md`](./DRY_RUN_AUTO_REPAIR.md) §2.2 / §6 |
 
 ---

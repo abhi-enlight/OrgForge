@@ -1,8 +1,8 @@
 import express from 'express';
 import { z } from 'zod';
 import { salesforceClient } from '../services/salesforceClient.js';
-import { encrypt } from '@forge/org-connections';
-import { createAuthMiddleware } from '@forge/auth';
+import { encrypt } from '@orgforge/org-connections';
+import { createAuthMiddleware } from '@orgforge/auth';
 const requireAuth = createAuthMiddleware();
 import { supabaseAdmin } from '../../lib/supabaseClients.js';
 import { orgIndexQueue, redisConnection } from '../jobs/queue.js';
@@ -12,7 +12,7 @@ import { orgIndexQueue, redisConnection } from '../jobs/queue.js';
 // SubscriberPackageId and 04t version id come from the Dev Hub package; env
 // overrides win.
 const ORGFORGE_PACKAGE_VERSION_ID =
-  process.env.FORGE_ECA_PACKAGE_VERSION_ID ||
+  process.env.ORGFORGE_ECA_PACKAGE_VERSION_ID ||
   process.env.ORGFORGE_PACKAGE_VERSION_ID ||
   '04tfj000000QFHxAAO';
 

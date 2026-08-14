@@ -27,11 +27,11 @@ process.on('uncaughtException', (err) => {
 // The OrgForge routes enqueue BullMQ jobs (org indexing, deployment polling,
 // dependency graph, self-improvement); without these in-process workers the
 // jobs would queue forever. Gated on the same flag as the capability routers
-// (FORGE_UNIFIED_API=on) so the flag-off state stays fully inert. Workers
+// (ORGFORGE_UNIFIED_API=on) so the flag-off state stays fully inert. Workers
 // retry their Redis connection in the background, so the API server still
 // boots even if Redis is temporarily unavailable (same contract as the legacy
 // index.js).
-const orgForgeEnabled = process.env.FORGE_UNIFIED_API === 'on';
+const orgForgeEnabled = process.env.ORGFORGE_UNIFIED_API === 'on';
 if (orgForgeEnabled) {
   // Import for side effects — each worker file constructs its BullMQ Worker
   // (with its own error guard, see orgforge/workers.js) at module load.
@@ -83,7 +83,7 @@ if (orgForgeEnabled) {
 }
 
 const server = app.listen(PORT, () => {
-  console.log(`[forge-api] unified Forge API listening on :${PORT}`);
+  console.log(`[forge-api] unified OrgForge API listening on :${PORT}`);
 });
 
 export { app, server };

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
-import { ForgeLogo } from '@/components/brand/ForgeLogo';
+import { OrgForgeLogo } from '@/components/brand/OrgForgeLogo';
 
 const LINKS = [
   { href: '#problem', label: 'The problem' },
@@ -31,7 +31,7 @@ export function LandingNav() {
         className="mx-auto flex min-h-16 max-w-7xl items-center justify-between px-5 sm:px-8"
         aria-label="Primary"
       >
-        <ForgeLogo href="/" size="md" className="min-w-0" />
+        <OrgForgeLogo href="/" size="md" className="min-w-0" />
 
         <div className="hidden items-center gap-8 md:flex">
           {LINKS.map((link) => (

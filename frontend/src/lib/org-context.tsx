@@ -138,8 +138,14 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   }, [setOrgs]);
 
   // One org-list check per tab session: restore the session cache when it
-  // belongs to the current user, otherwise fetch fresh. Deferred so no
-  // setState runs synchronously inside the effect body (react-hooks rule).
+  // belongs to the current user AND has orgs, otherwise fetch fresh. Deferred
+  // so no setState runs synchronously inside the effect body (react-hooks
+  // rule). An EMPTY cached list is never trusted: it may predate the user's
+  // first connect — the Salesforce OAuth round-trip does not invalidate the
+  // cache (and sessionStorage survives refreshes), so trusting it would pin
+  // the dashboard on the "Connect Salesforce" empty state forever, even after
+  // a successful reconnect in the same tab. A same-user cache with orgs is
+  // still trusted to keep the mount fetch at one per tab session.
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(async () => {
@@ -147,7 +153,9 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
         const { data } = await supabase.auth.getSession();
         if (cancelled) return;
         const userId = data.session?.user?.id ?? null;
-        if (initialCache && initialCache.userId === userId) return; // cache is ours — no fetch
+        if (initialCache && initialCache.userId === userId && initialCache.orgs.length > 0) {
+          return; // cache is ours and non-empty — no fetch
+        }
         await refreshOrgs();
       } catch {
         /* unauthenticated or backend down — the no-org empty states handle it */

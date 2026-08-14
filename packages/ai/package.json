@@ -1,9 +1,9 @@
 {
-  "name": "@forge/ai",
+  "name": "@orgforge/ai",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Forge unified AI: routeIntent classifier with deterministic overrides + unified SSE envelope (plan §7, §10.2)",
+  "description": "OrgForge unified AI: routeIntent classifier with deterministic overrides + unified SSE envelope (plan §7, §10.2)",
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",

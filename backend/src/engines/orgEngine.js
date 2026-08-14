@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // (ported from the legacy OrgForge backend — no out-of-repo resolution).
 const ORGFORGE_SRC = path.join(__dirname, '..', 'orgforge');
 
-const DEFAULT_RATIONALE = 'Requested via the Forge Copilot.';
+const DEFAULT_RATIONALE = 'Requested via the OrgForge Copilot.';
 // Mirrors changes.js /intent's fallback when the org hasn't been indexed yet.
 const MINIMAL_ORG_CONTEXT = { componentCount: 0, objects: [], apex: [] };
 

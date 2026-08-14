@@ -1,4 +1,4 @@
-# Forge — API Reference
+# OrgForge — API Reference
 
 **Base URL:** `/api/v1` (proxied to the unified backend, port **3001**; `frontend` rewrites `/api/*` via `next.config`).
 **Authoritative contract:** [`api_contract.md`](./api_contract.md) — **frozen**, additive-only until Phase 5 sign-off. This document is the readable developer reference; any discrepancy, the contract wins.
@@ -184,7 +184,7 @@ Live Salesforce Agent/Agentforce list from the connected org (Tooling/REST), SSR
 
 ## 3. Preserved OrgForge capability routers (mounted unchanged)
 
-Mounted verbatim under `/api/v1`, gated on `FORGE_UNIFIED_API=on` (capability phase flag). Contract: OrgForge API.md.
+Mounted verbatim under `/api/v1`, gated on `ORGFORGE_UNIFIED_API=on` (capability phase flag). Contract: OrgForge API.md.
 
 | Mount | Router | Routes |
 |---|---|---|
@@ -198,7 +198,7 @@ Mounted verbatim under `/api/v1`, gated on `FORGE_UNIFIED_API=on` (capability ph
 | `/api/v1/rollback` | `routes/rollback.js` | `POST /` |
 | `/api/v1/change-records` | `routes/changeRecords.js` | `GET /` |
 
-**Removed (Phase 5, 2026-08-14):** the legacy transition aliases `/api/auth` (Agentforge auth router) and `/api/org` (orgHealth) were deleted along with the `FORGE_MOUNT_AGENTFORGE` gate — the legacy apps are decommissioned.
+**Removed (Phase 5, 2026-08-14):** the legacy transition aliases `/api/auth` (Agentforge auth router) and `/api/org` (orgHealth) were deleted along with the `ORGFORGE_MOUNT_AGENTFORGE` gate — the legacy apps are decommissioned.
 
 ---
 

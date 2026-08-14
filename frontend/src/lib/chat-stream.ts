@@ -167,7 +167,7 @@ export async function streamChat(
     throw new Error(
       timedOut
         ? 'The request timed out. Please try again.'
-        : 'Unable to reach the Forge server. Check your connection and try again.'
+        : 'Unable to reach the OrgForge server. Check your connection and try again.'
     );
   }
 

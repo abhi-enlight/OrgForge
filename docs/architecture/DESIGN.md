@@ -2,7 +2,7 @@
 
 **Product:** OrgForge — one conversational copilot for the whole Salesforce org.
 **Token source of truth:** `frontend/src/app/globals.css` (`@theme` block, Tailwind v4) + component classes.
-**Design intelligence:** generated with `ui-ux-pro-max` (accessibility/interaction/motion rules); the *established* brand palette below is the source of truth (the generic "AI purple" default was consulted and rejected — Forge ships the OrgForge/Agentforge blue).
+**Design intelligence:** generated with `ui-ux-pro-max` (accessibility/interaction/motion rules); the *established* brand palette below is the source of truth (the generic "AI purple" default was consulted and rejected — OrgForge ships the OrgForge/Agentforge blue).
 
 > This document is the semantic design system — the "why" behind every token, named descriptively with exact values. New screens must reuse these tokens; never hardcode raw hex in components.
 
@@ -17,7 +17,7 @@
 - **Airy and flat** — generous spacing, a near-white surface with a whisper of cool blue-gray tint, flat cards with *barely-there* shadows. Nothing shouts.
 - **One accent, used sparingly** — electric blue on white. Color means *action*; when every action is blue, the one that matters (Ask OrgForge, Send) still wins.
 - **Calm status** — problems render as one inline banner with exactly one action, never a wall of modals (the single exception: the package-missing install modal, kept from Agentforge).
-- **Technical texture without jargon** — micro-captions in mono uppercase (`NAVIGATION`, `ORG FORGE v1`) as quiet signposts; artifacts render in Fira Code.
+- **Technical texture without jargon** — micro-captions in mono uppercase (`NAVIGATION`, `ORG ORGFORGE v1`) as quiet signposts; artifacts render in Fira Code.
 
 ---
 
@@ -27,7 +27,7 @@
 
 | Descriptive name | Hex | Role |
 |---|---|---|
-| **Forge Electric Blue** | `#1a6bff` | Primary actions, active nav, links, the ORG FORGE wordmark, thinking dots, focus rings |
+| **OrgForge Electric Blue** | `#1a6bff` | Primary actions, active nav, links, the ORG ORGFORGE wordmark, thinking dots, focus rings |
 | **Deep Press Blue** | `#0052e0` | Hover state of primary blue (interactive feedback) |
 | **Ice Blue Wash** | `#eef4ff` | Active nav pill background, chip/tag backgrounds, avatar initials, hero icon wells |
 | **Ink Navy** | `#0a0f1e` | Brand dark — avatar disc, wordmark text, primary text, footer |
@@ -60,7 +60,7 @@ Status colors are **always paired with a tinted background chip/banner** — nev
 
 - **UI type:** **Inter** (variable, via `next/font`), weights 400/500/600/700. Base 16px; body line-height ~1.5. Headings bold (700), tight tracking. Used **everywhere**, landing included (hero + section headlines use Inter 700 with `tracking-[-0.02em]`/`[-0.03em]` for the display feel — no separate display face; Space Grotesk was trialed in Pass 40 and reverted).
 - **Code/artifacts:** **Fira Code** (`--font-mono`) — YAML drawers, agent definitions, chat code blocks, log lines.
-- **Micro-captions:** mono uppercase with wide tracking (`text-[10px] font-mono font-bold uppercase tracking-[0.2em]`, e.g. `NAVIGATION`, `ORG FORGE v1`, `ACTIVE ORG`) — quiet technical signposts, slate-400.
+- **Micro-captions:** mono uppercase with wide tracking (`text-[10px] font-mono font-bold uppercase tracking-[0.2em]`, e.g. `NAVIGATION`, `ORG ORGFORGE v1`, `ACTIVE ORG`) — quiet technical signposts, slate-400.
 - **Wordmark:** `font-bold tracking-[0.25em]` — **O R G  F O R G E** beside the Enlight Lab logo mark.
 - **Scale:** keep body ≥ 12px (rule: no text below 12px); the smallest used size is 10px, reserved for decorative micro-captions only.
 
@@ -100,7 +100,7 @@ Status colors are **always paired with a tinted background chip/banner** — nev
 - **Spacing rhythm:** 4px base; generous section gaps (`space-y-4/6`); cards breathe. The dashboard caps at 3–4 cards — *whitespace > widgets*.
 - **One primary action per screen** — everything else secondary; empty states collapse to a single centered CTA.
 - **Radii ladder:** controls/rows `rounded-xl` (0.875rem) · cards `rounded-2xl` (1.25rem) · pills `rounded-full`. Chat bubbles skew the top-left corner (`rounded-tl-sm`) for a conversational feel.
-- **Depth:** flat base + whisper shadows for elevation; menus/dropdowns use `shadow-lift`; interactive cards `shadow-card-hover` on hover. Never heavy drop shadows. (The legacy blue "F" logo tile was replaced by the **Enlight Lab logo** — `public/enlight-logo.png`, 615×96 — rendered at `h-7 w-36 sm:w-40` with `object-contain`, hover `scale-[1.02]`, beside the ORG FORGE wordmark.)
+- **Depth:** flat base + whisper shadows for elevation; menus/dropdowns use `shadow-lift`; interactive cards `shadow-card-hover` on hover. Never heavy drop shadows. (The legacy blue "F" logo tile was replaced by the **Enlight Lab logo** — `public/enlight-logo.png`, 615×96 — rendered at `h-7 w-36 sm:w-40` with `object-contain`, hover `scale-[1.02]`, beside the ORG ORGFORGE wordmark.)
 
 ---
 

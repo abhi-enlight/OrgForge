@@ -2,7 +2,7 @@ import { Worker } from 'bullmq';
 import { createRedisConnection, dependencyGraphQueue } from './queue.js';
 import { salesforceClient } from '../services/salesforceClient.js';
 import { supabaseAdmin } from '../../lib/supabaseClients.js';
-import { getOrgCredentials } from '@forge/org-connections';
+import { getOrgCredentials } from '@orgforge/org-connections';
 
 // BullMQ workers require their own connection instance when using blocking commands
 const connection = createRedisConnection();

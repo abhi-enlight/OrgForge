@@ -1,8 +1,8 @@
 {
-  "name": "@forge/web",
+  "name": "@orgforge/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Forge — unified Enlight Lab app (Agent builder + org governance copilot), port 3000",
+  "description": "OrgForge — unified Enlight Lab app (Agent builder + org governance copilot), port 3000",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@forge/ai": "0.1.0",
+    "@orgforge/ai": "0.1.0",
     "@monaco-editor/react": "^4.7.0",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.46.1",

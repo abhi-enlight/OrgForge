@@ -45,6 +45,193 @@ function extractReferencedObjects(apexCode) {
   return Array.from(objects);
 }
 
+/**
+ * Scans Apex source and rewrites newlines/tabs that appear INSIDE single-quoted
+ * string literals. Apex forbids raw line breaks (and tabs) in string literals —
+ * "Illegal string literal: Line breaks are not allowed in string literals" — but
+ * LLM-generated code frequently contains them.
+ *
+ * Within string literals we:
+ *   - convert real \r\n / \r / \n into the canonical Apex escape `\n`
+ *   - convert real tabs into the canonical Apex escape `\t`
+ *   - un-double-escape JSON-serialization artifacts (`\\n` → `\n`, `\\t` → `\t`)
+ * Everything outside string literals (code, comments) is left untouched, and
+ * escaped quotes (`\'`) never terminate the literal prematurely.
+ *
+ * @param {string} apex - raw Apex source coming from the LLM
+ * @returns {string} Apex source whose string literals are legal Apex
+ */
+export function normalizeStringLiteralNewlines(apex) {
+  if (!apex || typeof apex !== 'string') return apex;
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  let i = 0;
+  const n = apex.length;
+  while (i < n) {
+    const ch = apex[i];
+    const next = apex[i + 1];
+
+    if (!inString) {
+      // Copy comments verbatim so apostrophes inside them can't open a fake string.
+      if (ch === '/' && next === '/') {
+        const eol = apex.indexOf('\n', i);
+        const end = eol === -1 ? n : eol;
+        out += apex.slice(i, end);
+        i = end;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        const close = apex.indexOf('*/', i + 2);
+        const end = close === -1 ? n : close + 2;
+        out += apex.slice(i, end);
+        i = end;
+        continue;
+      }
+      if (ch === "'") {
+        inString = true;
+        out += ch;
+        i++;
+        continue;
+      }
+      out += ch;
+      i++;
+      continue;
+    }
+
+    // ── Inside a single-quoted string literal ─────────────────────────────
+    if (escaped) {
+      out += ch;
+      escaped = false;
+      i++;
+      continue;
+    }
+    if (ch === '\\') {
+      // JSON double-escape artifact: `\\n` → `\n`, `\\t` → `\t`
+      if (next === '\\' && (apex[i + 2] === 'n' || apex[i + 2] === 't')) {
+        out += '\\' + apex[i + 2];
+        i += 3;
+        continue;
+      }
+      // Backslash immediately before a real newline — treat the newline as escaped
+      if (next === '\r' || next === '\n') {
+        out += '\\n';
+        i += (next === '\r' && apex[i + 2] === '\n') ? 3 : 2;
+        continue;
+      }
+      out += ch;
+      escaped = true;
+      i++;
+      continue;
+    }
+    if (ch === "'") {
+      inString = false;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (ch === '\n' || ch === '\r') {
+      out += '\\n';
+      i += (ch === '\r' && next === '\n') ? 2 : 1;
+      continue;
+    }
+    if (ch === '\t') {
+      out += '\\t';
+      i++;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Detects string literals containing real line breaks — the exact pattern the
+ * Apex compiler rejects. Shares the same comment/escape-aware scanner as
+ * normalizeStringLiteralNewlines, so apostrophes in comments or escaped quotes
+ * never confuse it.
+ *
+ * @param {string} apex - Apex source to inspect
+ * @returns {Array<{line: number, snippet: string}>} one entry per offending literal
+ */
+export function findStringLiteralViolations(apex) {
+  if (!apex || typeof apex !== 'string') return [];
+  const violations = [];
+  let inString = false;
+  let escaped = false;
+  let line = 1;
+  let literalStart = -1;
+  let literalStartLine = 1;
+  const n = apex.length;
+  let i = 0;
+
+  const countNewlines = (s) => (s.match(/\n/g) || []).length;
+
+  while (i < n) {
+    const ch = apex[i];
+    const next = apex[i + 1];
+
+    if (!inString) {
+      if (ch === '/' && next === '/') {
+        const eol = apex.indexOf('\n', i);
+        const end = eol === -1 ? n : eol;
+        line += countNewlines(apex.slice(i, end));
+        i = end;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        const close = apex.indexOf('*/', i + 2);
+        const end = close === -1 ? n : close + 2;
+        line += countNewlines(apex.slice(i, end));
+        i = end;
+        continue;
+      }
+      if (ch === "'") {
+        inString = true;
+        literalStart = i;
+        literalStartLine = line;
+        i++;
+        continue;
+      }
+      if (ch === '\n') line++;
+      i++;
+      continue;
+    }
+
+    // ── Inside a single-quoted string literal ─────────────────────────────
+    if (escaped) {
+      escaped = false;
+      i++;
+      continue;
+    }
+    if (ch === '\\') {
+      if (next === '\\' && (apex[i + 2] === 'n' || apex[i + 2] === 't')) {
+        i += 3;
+        continue;
+      }
+      escaped = true;
+      i++;
+      continue;
+    }
+    if (ch === "'") {
+      inString = false;
+      i++;
+      continue;
+    }
+    if (ch === '\n' || ch === '\r') {
+      const snippet = apex.slice(literalStart, i + 1).replace(/\s+/g, ' ').slice(0, 80);
+      violations.push({ line: literalStartLine, snippet });
+      i += (ch === '\r' && next === '\n') ? 2 : 1;
+      if (ch === '\n') line++;
+      continue;
+    }
+    if (ch === '\n') line++;
+    i++;
+  }
+  return violations;
+}
+
 function getFieldTypeAttributes(field) {
   const type = field.type;
   let attrs = '';
@@ -442,6 +629,18 @@ class SalesforceClient {
 
   validateApexCode(apexCode, testClassCode, developerName) {
     if (!apexCode) return { valid: false, reason: 'No Apex code provided' };
+    // Illegal line breaks inside string literals are the #1 deploy-time Apex
+    // compile failure ("Illegal string literal: Line breaks are not allowed in
+    // string literals"). Reject them up-front so the model regenerates clean
+    // code instead of discovering the error during a 60-component deploy.
+    const apexViolations = findStringLiteralViolations(apexCode);
+    if (apexViolations.length > 0) {
+      const v = apexViolations[0];
+      return {
+        valid: false,
+        reason: `APEX LINTER ERROR: illegal line break inside a string literal at line ${v.line} ("${v.snippet}..."). Apex string literals CANNOT span multiple lines. Rewrite the string using the \\n escape sequence (e.g. 'line one\\nline two') or adjacent concatenation ('line one ' + 'line two').`
+      };
+    }
     if (!apexCode.includes('@InvocableMethod')) return { valid: false, reason: 'Missing @InvocableMethod annotation' };
     if (!apexCode.includes('List<')) return { valid: false, reason: 'Missing List parameter or return (must bulkify)' };
     if (!apexCode.includes('global static') && !apexCode.includes('public static')) {
@@ -449,6 +648,14 @@ class SalesforceClient {
     }
 
     if (testClassCode) {
+      const testViolations = findStringLiteralViolations(testClassCode);
+      if (testViolations.length > 0) {
+        const v = testViolations[0];
+        return {
+          valid: false,
+          reason: `TEST LINTER ERROR: illegal line break inside a string literal at line ${v.line} ("${v.snippet}..."). Apex string literals CANNOT span multiple lines. Rewrite using the \\n escape or concatenation.`
+        };
+      }
       const isTestMatch = /@isTest/i.test(testClassCode);
       if (!isTestMatch) {
         return { valid: false, reason: 'TEST LINTER ERROR: testClassCode is missing @isTest annotation.' };
@@ -472,8 +679,12 @@ class SalesforceClient {
    */
   sanitizeApexCode(apexCode, developerName) {
     let cls = apexCode || '';
-    // Unescape literal backslash characters from JSON serialization
-    cls = cls.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
+    // Normalize illegal raw newlines/tabs inside string literals and undo JSON
+    // double-escaping — WITHOUT touching escapes that are already legal. The
+    // old global .replace(/\\n/g, '\n') could turn a valid `\n` escape inside a
+    // string literal into a real line break, producing "Illegal string literal:
+    // Line breaks are not allowed in string literals" at deploy time.
+    cls = normalizeStringLiteralNewlines(cls);
     
     // Enforce global visibility and strictly prevent security bypasses
     cls = cls.replace(/\bpublic\s+with\s+sharing\s+class\b/gi, 'global with sharing class');
@@ -1048,7 +1259,10 @@ ${subagentsYaml}`;
           const failuresRaw = status.details?.componentFailures || [];
           const failures = Array.isArray(failuresRaw) ? failuresRaw : (failuresRaw ? [failuresRaw] : []);
           const errors = failures.map(f => ({
-            component: f.componentName || 'unknown',
+            // Prefer componentName, but fall back to fileName (e.g. "classes/CheckSLABreaches.cls")
+            // so Apex compile failures like "Illegal string literal" still identify the
+            // exact class the self-heal loop must regenerate.
+            component: f.componentName || f.fileName || 'unknown',
             type: f.componentType || 'unknown',
             problem: f.problem || 'unknown error',
             line: f.lineNumber || null,
@@ -1137,6 +1351,14 @@ ${subagentsYaml}`;
     console.log('[ACT] Queuing Action (Apex):', payload.developerName);
     payload.developerName = sanitizeName(payload.developerName);
     payload.type = 'apex';
+    // Pre-flight lint: reject code that cannot possibly compile (e.g. line breaks
+    // inside string literals) so the model fixes it NOW via the tool response
+    // instead of discovering it during a 60-component metadata deploy.
+    const validation = this.validateApexCode(payload.apexCode, payload.testClassCode, payload.developerName);
+    if (!validation.valid) {
+      console.warn(`[ACT] Rejected ${payload.developerName}: ${validation.reason}`);
+      return { success: false, error: validation.reason };
+    }
     const existingIndex = ctx.actions.findIndex(a => a.developerName === payload.developerName);
     if (existingIndex !== -1) {
       ctx.actions[existingIndex] = payload;

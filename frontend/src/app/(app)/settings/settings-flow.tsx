@@ -511,8 +511,8 @@ export default function SettingsFlow() {
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Runtime</p>
             <p className="mt-1.5 text-sm text-slate-600">
-              Forge runs a single unified API with the Agent and Org Change capabilities mounted behind the
-              <span className="font-mono text-xs">FORGE_UNIFIED_API</span> feature flag. The legacy apps were
+              OrgForge runs a single unified API with the Agent and Org Change capabilities mounted behind the
+              <span className="font-mono text-xs">ORGFORGE_UNIFIED_API</span> feature flag. The legacy apps were
               decommissioned (2026-08-14) — this unified API is the only surface.
             </p>
           </div>

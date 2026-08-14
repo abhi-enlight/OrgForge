@@ -1,4 +1,4 @@
-import { serializeSseFrame } from '@forge/ai';
+import { serializeSseFrame } from '@orgforge/ai';
 
 /**
  * SSE transport for the Copilot stream (plan §10.2).

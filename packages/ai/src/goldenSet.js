@@ -44,6 +44,10 @@ export const GOLDEN_SET = [
   { prompt: 'list my agents but also add a validation rule', expected: 'both', model: 'both', confidence: 0.89 },
   { prompt: 'make a new field and update my agent to use it', expected: 'both', model: 'both', confidence: 0.9 },
 
+  // A flaky "clarify" from the model must not stall an unambiguous build request
+  // (the deterministic rules resolve it).
+  { prompt: 'build a case triage agent that owns inbound support cases', expected: 'agent', model: 'clarify', confidence: 0.6, reason: 'flaky clarify' },
+
   // ── clarify / refuse (9) ────────────────────────────────────────────────
   { prompt: "what's the weather?", expected: 'clarify', model: 'clarify', confidence: 0.97 },
   { prompt: 'tell me a joke', expected: 'clarify', model: 'clarify', confidence: 0.98 },

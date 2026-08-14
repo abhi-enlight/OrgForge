@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Menu, ChevronDown, LogOut, User, Zap, Cloud, FlaskConical } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useActiveOrg, type OrgSummary } from '@/lib/org-context';
-import { ForgeLogo } from '@/components/brand/ForgeLogo';
+import { OrgForgeLogo } from '@/components/brand/OrgForgeLogo';
 import { cn } from '@/lib/utils';
 
 interface HeaderProps {
@@ -23,7 +23,7 @@ const ORG_TYPE_LABEL: Record<OrgSummary['orgType'], string> = {
 const ORG_TYPE_ICON = { production: Zap, sandbox: Cloud, scratch: FlaskConical };
 
 /**
- * Top bar (plan §6.1): FORGE wordmark, live org pill (type-aware, global
+ * Top bar (plan §6.1): ORGFORGE wordmark, live org pill (type-aware, global
  * switcher — switching orgs confirms first, EC-25), avatar menu with sign-out.
  * The org list comes from the shared ActiveOrgProvider (fetched once per tab
  * session, not on every page load) — this component only renders it.
@@ -83,7 +83,7 @@ export default function Header({ onOpenMobileNav, isMobileNavOpen }: HeaderProps
       {/* Logo → the app's main route; the wordmark hides below `sm` so the
           header (hamburger + logo + org pill + avatar) fits narrow phones.
           The tile mark carries the brand on its own. */}
-      <ForgeLogo href="/dashboard" size="md" className="min-w-0" wordmarkClassName="hidden sm:inline" />
+      <OrgForgeLogo href="/dashboard" size="md" className="min-w-0" wordmarkClassName="hidden sm:inline" />
 
       <div className="flex-1 min-w-0" />
 
@@ -167,7 +167,7 @@ export default function Header({ onOpenMobileNav, isMobileNavOpen }: HeaderProps
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-brand-dark truncate">{email || 'Signed in'}</p>
                 <p className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <User className="w-3 h-3" /> Forge
+                  <User className="w-3 h-3" /> OrgForge
                 </p>
               </div>
             </div>

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 
 export type CapabilityPin = 'agent' | 'org_change' | 'both' | null;
 
-/** Verdict shape from @forge/ai's rule-based stub classifier (canary preview). */
+/** Verdict shape from @orgforge/ai's rule-based stub classifier (canary preview). */
 export interface StubVerdict {
   capability: 'agent' | 'org_change' | 'both' | 'clarify';
   confidence: number;
@@ -31,7 +31,7 @@ const OPTIONS: {
     value: null,
     label: 'Auto',
     hint: 'Let the router decide',
-    purpose: 'Forge reads your request and routes it to the right engine automatically.',
+    purpose: 'OrgForge reads your request and routes it to the right engine automatically.',
     whenToUse: 'Default for everyday requests. Just type what you want.',
   },
   {
@@ -77,7 +77,7 @@ const STUB_LABELS: Record<StubVerdict['capability'], string> = {
  * dismissed. Pinned panels close on Esc, on an outside tap, or by toggling
  * the same chip again.
  *
- * Canary mode (`FORGE_UNIFIED_FRONTEND=on`, plan §14.2 Phase 1): when the
+ * Canary mode (`ORGFORGE_UNIFIED_FRONTEND=on`, plan §14.2 Phase 1): when the
  * router is on `Auto`, a live stub rule-based preview shows what routing
  * *would* happen for the current draft — free, offline, zero AI calls. It is
  * explicitly labeled "stub" and never sent to the server (the real router
@@ -95,7 +95,7 @@ export default function CapabilityChip({
   value: CapabilityPin;
   onChange: (value: CapabilityPin) => void;
   disabled?: boolean;
-  /** Canary flag (FORGE_UNIFIED_FRONTEND=on) — enables the stub preview. */
+  /** Canary flag (ORGFORGE_UNIFIED_FRONTEND=on) — enables the stub preview. */
   canary?: boolean;
   /** Rule-based verdict for the current draft (null when nothing typed yet). */
   stubVerdict?: StubVerdict | null;

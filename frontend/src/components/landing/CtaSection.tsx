@@ -63,7 +63,7 @@ export function CtaSection() {
                   href="/login"
                   className="group inline-flex items-center gap-2 rounded-full bg-brand-blue px-8 py-4 text-sm font-semibold text-white shadow-glow transition-all duration-200 hover:bg-brand-blue-hover hover:shadow-glow-lg active:scale-[0.98]"
                 >
-                  Open Forge
+                  Open OrgForge
                   <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
                 </Link>
               </div>

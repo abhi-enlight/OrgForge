@@ -117,7 +117,7 @@ export default function AgentsOverview({
               <Bot className="w-5 h-5 text-slate-400" />
             </span>
             <p className="text-sm text-slate-500">No agents deployed yet.</p>
-            <p className="mt-1 text-xs text-slate-400">Ask Forge to build the first one from chat.</p>
+            <p className="mt-1 text-xs text-slate-400">Ask OrgForge to build the first one from chat.</p>
           </div>
         ) : null}
       </div>

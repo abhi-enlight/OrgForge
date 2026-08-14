@@ -97,7 +97,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Re-link RPCs consumed by @forge/org-connections reLink.js (§8.4)
+-- Re-link RPCs consumed by @orgforge/org-connections reLink.js (§8.4)
 -- ============================================================
 
 -- Lists every legacy row belonging to an agentforge_user_id so the unified

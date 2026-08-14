@@ -1,5 +1,5 @@
 -- 008_forge_schema.sql
--- Forge unified schema (plan §9). ADDITIVE: creates the `orgforge` schema and
+-- OrgForge unified schema (plan §9). ADDITIVE: creates the `orgforge` schema and
 -- its tables; nothing here drops or modifies the legacy `public` tables. Run
 -- AFTER the OrgForge 001–007 migrations in the shared project.
 -- Idempotent: safe to run multiple times.

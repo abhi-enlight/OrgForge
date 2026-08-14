@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { createAuthMiddleware, tenantIsolation } from '@forge/auth';
-import { linkLegacyAgentforgeOrgs } from '@forge/org-connections';
+import { createAuthMiddleware, tenantIsolation } from '@orgforge/auth';
+import { linkLegacyAgentforgeOrgs } from '@orgforge/org-connections';
 
 const bodySchema = z.object({
   legacyToken: z.string().min(1),

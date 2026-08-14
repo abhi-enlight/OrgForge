@@ -1,6 +1,6 @@
-# Forge Documentation
+# OrgForge Documentation
 
-Welcome to the documentation for **Forge** — the unified platform combining agent building (`Agentforge`) and Salesforce org governance (`OrgForge`).
+Welcome to the documentation for **OrgForge** — the unified platform combining agent building (`Agentforge`) and Salesforce org governance (`OrgForge`).
 
 ## Documentation Map
 

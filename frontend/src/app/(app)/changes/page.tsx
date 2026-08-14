@@ -96,7 +96,7 @@ function timeAgo(iso?: string): string {
 
 /**
  * RFC-4180 cell escaping: quotes when the value contains a comma, quote,
- * newline, or carriage return, doubling embedded quotes. (Forge only
+ * newline, or carriage return, doubling embedded quotes. (OrgForge only
  * escaped intent/approver; this is the strict form for all evidence fields.)
  */
 function csvCell(value: string | number | null | undefined): string {
@@ -117,7 +117,7 @@ function serializeGateResults(gates?: GateResult[] | null): string {
 }
 
 /**
- * Builds the full audit-log CSV (Forge history convention: `-audit-log-
+ * Builds the full audit-log CSV (OrgForge history convention: `-audit-log-
  * <date>.csv`, header row + one row per record, full list — not the filtered
  * view). Columns carry the signed evidence: rationale, blast radius, gates,
  * dry run, deployment, git commit, HMAC signature, skills.
@@ -232,7 +232,7 @@ export default function ChangesPage() {
     setRefreshing(false);
   };
 
-  /** Full-log CSV export (Forge history convention) — the signed evidence trail. */
+  /** Full-log CSV export (OrgForge history convention) — the signed evidence trail. */
   const handleExport = () => {
     if (!records || records.length === 0) return;
     // Synchronous client-side download — no spinner needed (React would batch
@@ -308,7 +308,7 @@ export default function ChangesPage() {
             href="/chat"
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue text-white text-sm font-semibold shadow-glow hover:bg-brand-blue-hover transition-colors"
           >
-            <Sparkles className="w-4 h-4" /> Ask Forge
+            <Sparkles className="w-4 h-4" /> Ask OrgForge
           </Link>
         </div>
       </div>

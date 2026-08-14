@@ -103,12 +103,12 @@ export function Problem() {
             </div>
           </Reveal>
 
-          {/* Card 2: With Forge */}
+          {/* Card 2: With OrgForge */}
           <Reveal delay={0.16}>
             <div className="flex h-full flex-col rounded-2xl border border-brand-blue/30 bg-brand-blue-light/30 p-7 shadow-soft sm:p-8">
               <div className="flex items-center justify-between border-b border-brand-blue/15 pb-4">
                 <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-brand-blue">
-                  With Forge
+                  With OrgForge
                 </span>
                 <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-brand-pass font-bold">
                   Governed
