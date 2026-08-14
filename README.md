@@ -34,7 +34,7 @@ orgforge/
     ├── README.md               # Documentation map & index
     ├── api/                    # API contract & reference docs (api_contract.md, API.md)
     ├── architecture/           # System design & architecture (unification_plan.md, DECISIONS.md, APP_FLOW.md, ...)
-    ├── setup/                  # Setup guides (github_app_setup.md, packaged_eca_setup.md)
+    ├── setup/                  # Setup & deployment guides (deployment.md, github_app_setup.md, packaged_eca_setup.md)
     ├── specifications/         # Requirements & plan trackers (PRD.md, IMPLEMENTATION_PLAN.md, ...)
     ├── operations/             # Phase 5 rollout & redesign plans (PHASE5_PLAN.md, ...)
     └── legacy/                 # Imported legacy PRDs (OrgForge_PRD.md, Agentforge_PRD.md)
@@ -53,3 +53,7 @@ npm test                    # runs all package tests (workspaces)
 `npm run dev` uses `concurrently` — prefixed logs (`[backend]` / `[frontend]`),
 Ctrl+C stops both. The backend dev/start scripts enable the capability flag
 (`ORGFORGE_UNIFIED_API=on`) so the web app's APIs are fully mounted.
+
+## Deployment
+
+For production deployment instructions on Vercel, Render, Supabase, and Redis, see the [Deployment Guide](docs/setup/deployment.md).

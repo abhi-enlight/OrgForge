@@ -18,7 +18,7 @@ import {
 } from '@/lib/chat-stream';
 import { supabase } from '@/lib/supabase';
 import { ORGFORGE_UNIFIED_FRONTEND } from '@/lib/flags';
-import { classifyWithStub } from '@orgforge/ai/stubClassifier';
+import { classifyWithStub } from '@/lib/stubClassifier';
 import MessageBubble from '@/components/chat/MessageBubble';
 import OrgChangeCard from '@/components/chat/OrgChangeCard';
 import BuildProgressCard, { PROGRESS_TYPES, type ProgressStep } from '@/components/chat/BuildProgressCard';

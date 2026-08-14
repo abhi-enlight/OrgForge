@@ -25,8 +25,10 @@ Welcome to the documentation for **OrgForge** — the unified platform combining
 - [`PHASE5_PLAN.md`](./operations/PHASE5_PLAN.md) — Phase 5 rollout runbook (canary, soak metrics, legacy retirement).
 - [`LANDING_REDESIGN_PLAN.md`](./operations/LANDING_REDESIGN_PLAN.md) — Landing page blueprint & visual overhaul plan.
 
-### 🔧 Setup (`docs/setup/`)
+### 🔧 Setup & Deployment (`docs/setup/`)
+- [`deployment.md`](./setup/deployment.md) — Comprehensive production deployment runbook (Vercel, Render, Supabase, Redis).
 - [`packaged_eca_setup.md`](./setup/packaged_eca_setup.md) — Installing the OrgForge Connector package (install links, access grants, verification, troubleshooting).
+- [`github_app_setup.md`](./setup/github_app_setup.md) — GitHub App setup guide for automated git audit trail logging.
 
 ### 📁 Archived / Legacy (`docs/legacy/`)
 - [`Agentforge_PRD.md`](./legacy/Agentforge_PRD.md) — Historical Agentforge PRD v6.0.

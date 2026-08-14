@@ -7,7 +7,6 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "start:api": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node --test --test-reporter spec 'src/**/*.test.js' 'scripts/**/*.test.mjs'"
   },

@@ -6,7 +6,7 @@ The architecture consists of:
 - **Frontend Web**: Next.js 16 App Router (deployed on [Vercel](https://vercel.com))
 - **Backend API & Workers**: Express 5 + BullMQ workers (deployed on [Render](https://render.com))
 - **Database & Auth**: PostgreSQL with Row-Level Security (RLS) and Supabase Auth ([Supabase](https://supabase.com))
-- **Queue & Cache**: Redis for conversation locks and BullMQ job queues ([Render Redis](https://render.com) or [Upstash](https://upstash.com))
+- **Queue & Cache**: Redis for conversation locks and BullMQ job queues ([Render Key Value](https://render.com) or [Upstash](https://upstash.com))
 
 ---
 
@@ -79,9 +79,9 @@ The backend is an Express 5 service that runs both the API routes and the BullMQ
    - **Name:** `orgforge-api` (or preferred name)
    - **Environment:** `Node`
    - **Region:** Same region as your Redis instance
-   - **Root Directory:** Leave blank (runs from repository root)
+   - **Root Directory:** `backend` (or leave blank if running from monorepo root)
    - **Build Command:** `npm install`
-   - **Start Command:** `npm run start:api`
+   - **Start Command:** `npm start`
 4. Add the following **Environment Variables**:
 
 ### Required Backend Environment Variables
