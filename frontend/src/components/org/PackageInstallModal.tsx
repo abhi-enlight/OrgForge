@@ -130,7 +130,12 @@ export default function PackageInstallModal({
                       {copied ? 'Copied!' : 'Copy Link for IT'}
                     </button>
                   </div>
-                  {health?.orgType && (
+                  {/* Technical footer — only when the backend supplied the
+                      package version (real health checks do). OAuth-callback
+                      popups (login/workspace) build a synthetic health without
+                      it, so the line is omitted rather than rendering a broken
+                      "p0=undefined". */}
+                  {health?.orgType && health.packageVersionId && (
                     <p className="text-[10px] font-mono text-slate-400 mt-2">
                       target: {health.orgType.toUpperCase()} · p0={health.packageVersionId}
                     </p>
@@ -180,11 +185,18 @@ export default function PackageInstallModal({
               </div>
             </div>
 
-            {/* Footer */}
+            {/* Footer — the technical package line only renders when the
+                backend supplied a version id (synthetic OAuth-callback health
+                omits it instead of showing "package … · checked –"). */}
             <div className="px-6 py-3.5 bg-slate-50/60 border-t border-brand-border flex items-center justify-between">
-              <span className="text-[10px] font-mono text-slate-400">
-                package {health?.packageVersionId || '…'} · checked {health?.checkedAt ? new Date(health.checkedAt).toLocaleTimeString() : '–'}
-              </span>
+              {health?.packageVersionId ? (
+                <span className="text-[10px] font-mono text-slate-400">
+                  package {health.packageVersionId} · checked{' '}
+                  {health.checkedAt ? new Date(health.checkedAt).toLocaleTimeString() : '–'}
+                </span>
+              ) : (
+                <span />
+              )}
               <button
                 onClick={onClose}
                 className="text-xs font-semibold text-slate-500 hover:text-brand-blue transition-colors cursor-pointer"

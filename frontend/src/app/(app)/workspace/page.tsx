@@ -20,6 +20,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner';
 import PackageHealthChip from '@/components/org/PackageHealthChip';
 import PackageInstallModal from '@/components/org/PackageInstallModal';
 import { useOrgPackageHealthFor } from '@/lib/orgHealth';
+import type { PackageHealth } from '@/lib/orgHealth';
 import { Cpu, ArrowRight, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { apiFetch, getErrorMessage, HEAVY_REQUEST_TIMEOUT_MS } from '@/lib/api';
@@ -31,6 +32,15 @@ import { ToastProvider } from '@/components/providers/ToastProvider';
 interface RedirectNotice {
   type: 'error' | 'success';
   message: string;
+  /**
+   * ECA-not-installed flow (auth.js /salesforce/callback): when Salesforce
+   * refused sign-in because the OrgForge Connector ECA is missing from the
+   * org, the backend redirects with error=ECANotInstalled plus the org-aware
+   * install link. The install-steps popup opens instead of a bare error line.
+   */
+  installUrl?: string;
+  orgType?: string;
+  instanceUrl?: string;
 }
 
 /**
@@ -46,6 +56,10 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
     'Your org connected, but saving it to the vault failed. Please retry the connection.',
   ExchangeFailed:
     'Salesforce rejected the connection handshake (invalid or revoked credentials). Please retry.',
+  // Shown only when the backend could NOT resolve an install link (e.g.
+  // expired PKCE state); with a link the install-steps popup opens instead.
+  ECANotInstalled:
+    'The OrgForge Connector is not installed in this org. Install it, then retry connecting.',
 };
 
 function readRedirectNotice(): RedirectNotice | null {
@@ -56,6 +70,15 @@ function readRedirectNotice(): RedirectNotice | null {
     // params.get already decodes percent-encoding, so use it verbatim —
     // re-decoding could throw URIError on a literal '%' (e.g. "100%").
     const message = OAUTH_ERROR_MESSAGES[errorCode] || errorCode;
+    if (errorCode === 'ECANotInstalled') {
+      return {
+        type: 'error',
+        message,
+        installUrl: params.get('installUrl') || undefined,
+        orgType: params.get('orgType') || 'production',
+        instanceUrl: params.get('instanceUrl') || undefined,
+      };
+    }
     return { type: 'error', message };
   }
   if (params.get('success') === 'true') {
@@ -252,6 +275,9 @@ function WorkspaceFlow() {
   const [selectedGateToUnblock, setSelectedGateToUnblock] = useState<GateResult | null>(null);
   const [isUnblockModalOpen, setIsUnblockModalOpen] = useState(false);
   const [redirectNotice, setRedirectNotice] = useState<RedirectNotice | null>(null);
+  // ECA-not-installed popup: auto-opens when the OAuth callback came back with
+  // error=ECANotInstalled AND an install link (mirrors the login flow).
+  const [ecaInstallPopupOpen, setEcaInstallPopupOpen] = useState(false);
 
   const queryOrgId = getQueryOrgId();
 
@@ -278,10 +304,16 @@ function WorkspaceFlow() {
       const notice = readRedirectNotice();
       if (!notice || cancelled) return;
       setRedirectNotice(notice);
+      if (notice.installUrl) setEcaInstallPopupOpen(true);
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href);
         url.searchParams.delete('error');
         url.searchParams.delete('success');
+        // ECA-not-installed params were consumed into the notice/popup — scrub
+        // them too so a refresh doesn't re-trigger the popup.
+        url.searchParams.delete('installUrl');
+        url.searchParams.delete('orgType');
+        url.searchParams.delete('instanceUrl');
         window.history.replaceState({}, '', url.toString());
       }
     }, 0);
@@ -597,8 +629,10 @@ function WorkspaceFlow() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* OAuth / connection flow notices (survive the redirect round-trip) */}
-      {redirectNotice && (
+      {/* OAuth / connection flow notices (survive the redirect round-trip).
+          The ECA-not-installed case is surfaced by the install-steps popup
+          below instead of the raw error banner (mirrors the login flow). */}
+      {redirectNotice && !ecaInstallPopupOpen && (
         <ErrorBanner
           variant={redirectNotice.type === 'error' ? 'error' : 'success'}
           title={
@@ -963,6 +997,29 @@ function WorkspaceFlow() {
         isRechecking={pkgStatus === 'checking'}
         onRecheck={recheckPackage}
       />
+
+      {/* ECA-not-installed popup (OAuth callback): install link + steps
+          instead of a dead-end error line. Mirrors the login flow — the
+          "Re-check" action routes to the connect screen (/login?step=2) where
+          the OAuth round-trip restarts; the login flow's own popup handles
+          the retry with the org type preserved. */}
+      {redirectNotice?.installUrl && (
+        <PackageInstallModal
+          isOpen={ecaInstallPopupOpen}
+          onClose={() => setEcaInstallPopupOpen(false)}
+          health={{
+            orgId: 'pending',
+            orgType: redirectNotice.orgType || 'production',
+            status: 'missing',
+            installUrl: redirectNotice.installUrl,
+          } satisfies PackageHealth}
+          isRechecking={false}
+          onRecheck={() => {
+            setEcaInstallPopupOpen(false);
+            router.push('/login?step=2');
+          }}
+        />
+      )}
 
       {/* Interactive Refusal Gate Unblock Action Modal */}
       <UnblockActionModal

@@ -7,6 +7,26 @@ const requireAuth = createAuthMiddleware();
 import { supabaseAdmin } from '../../lib/supabaseClients.js';
 import { orgIndexQueue, redisConnection } from '../jobs/queue.js';
 
+// OrgForge Connector package metadata (same ids + URL shape as
+// orgforge/routes/orgs.js and routes/diagnostics.js — keep in sync). The 033
+// SubscriberPackageId and 04t version id come from the Dev Hub package; env
+// overrides win.
+const ORGFORGE_PACKAGE_VERSION_ID =
+  process.env.FORGE_ECA_PACKAGE_VERSION_ID ||
+  process.env.ORGFORGE_PACKAGE_VERSION_ID ||
+  '04tfj000000QFHxAAO';
+
+/** Builds the Salesforce package-installer URL for an org type (mirrors orgs.js). */
+function buildInstallUrl(orgType, instanceUrl) {
+  const base =
+    orgType === 'sandbox'
+      ? 'https://test.salesforce.com'
+      : orgType === 'scratch'
+        ? (instanceUrl || '').replace(/\/$/, '')
+        : 'https://login.salesforce.com';
+  return `${base}/packaging/installPackage.apexp?p0=${ORGFORGE_PACKAGE_VERSION_ID}`;
+}
+
 const router = express.Router();
 
 const connectSchema = z.object({
@@ -83,7 +103,50 @@ router.get('/salesforce/callback', async (req, res) => {
     const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
     
     if (error) {
-      return res.redirect(`${corsOrigin}/login?step=2&error=${encodeURIComponent(error_description || error)}`);
+      // The "external client app is not installed" failure means the OrgForge
+      // Connector ECA is missing from the target org — the user must install
+      // it before sign-in can complete. Instead of bouncing the raw Salesforce
+      // message back to the login screen, resolve the org type from the PKCE
+      // state (still in Redis — not yet consumed) and redirect with a
+      // structured code + the org-aware install link so the login flow can
+      // pop up the install steps. Any other OAuth error keeps the old passthrough.
+      const message = String(error_description || error || '');
+      const ecaMissing = /external client app|not installed|isn'?t installed/i.test(message);
+
+      let orgType = 'production';
+      let instanceUrl = '';
+      if (state) {
+        try {
+          const session = await getOAuthState(state);
+          if (session) {
+            orgType = session.orgType || 'production';
+            instanceUrl = session.instanceUrl || '';
+          }
+        } catch {
+          /* state lookup is best-effort — fall back to defaults */
+        }
+        try {
+          await deleteOAuthState(state);
+        } catch {
+          /* cleanup is best-effort (TTL covers it) */
+        }
+      }
+
+      if (ecaMissing) {
+        const qs = new URLSearchParams({
+          step: '2',
+          error: 'ECANotInstalled',
+          orgType,
+          installUrl: buildInstallUrl(orgType, instanceUrl),
+        });
+        // Scratch orgs authenticate on their own instance domain — echo it
+        // back so "Retry after installing" can re-start OAuth without the
+        // user re-pasting the URL.
+        if (instanceUrl) qs.set('instanceUrl', instanceUrl);
+        return res.redirect(`${corsOrigin}/login?${qs.toString()}`);
+      }
+
+      return res.redirect(`${corsOrigin}/login?step=2&error=${encodeURIComponent(message)}`);
     }
 
     if (!code || !state) {

@@ -8,6 +8,8 @@ import { apiFetch, getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { ForgeLogo } from '@/components/brand/ForgeLogo';
 import GithubConnectCard from '@/components/settings/GithubConnectCard';
+import PackageInstallModal from '@/components/org/PackageInstallModal';
+import type { PackageHealth } from '@/lib/orgHealth';
 
 const LEGACY_TOKEN_KEY = 'auth_token'; // Agentforge legacy session token (EC-02)
 
@@ -79,6 +81,12 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
     'Your org connected, but saving it to the vault failed. Please retry the connection.',
   ExchangeFailed:
     'Salesforce rejected the connection handshake (invalid or revoked credentials). Please retry.',
+  // The structured ECA-not-installed code (auth.js /salesforce/callback):
+  // when the backend could NOT resolve an install link (e.g. expired PKCE
+  // state), this friendly line shows in the error banner; when it DID, the
+  // install-steps popup opens instead and the banner is suppressed.
+  ECANotInstalled:
+    'The OrgForge Connector is not installed in this org. Install it, then retry connecting.',
 };
 
 /**
@@ -102,12 +110,37 @@ export default function LoginFlow() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedStep = Number(searchParams.get('step')) || 1;
-  const oauthError = searchParams.get('error');
+  // Snapshot the OAuth callback params ONCE. The callback lands here as a
+  // full-page redirect, and the URL is scrubbed right after mount (below) so
+  // a refresh doesn't re-trigger — which means the popup AND the dismiss
+  // banner must be driven by this captured state, never by live searchParams
+  // (those re-sync to the scrubbed URL on the next render). Same pattern as
+  // the workspace's redirect-notice state.
+  const [oauthNotice] = useState(() => ({
+    error: searchParams.get('error'),
+    installUrl: searchParams.get('installUrl'),
+    orgType: searchParams.get('orgType') || 'production',
+    instanceUrl: searchParams.get('instanceUrl') || undefined,
+  }));
+  const oauthError = oauthNotice.error;
   // Friendly copy for the OAuth callback error codes (raw codes fall through
   // to the code itself so the user still sees something actionable).
   const oauthErrorMessage = oauthError ? OAUTH_ERROR_MESSAGES[oauthError] || oauthError : null;
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  // ECA-not-installed flow: the OAuth callback redirects with
+  // error=ECANotInstalled&installUrl=...&orgType=... when Salesforce refused
+  // sign-in because the OrgForge Connector ECA is missing from the org — the
+  // install-steps popup opens instead of a bare error line.
+  const ecaNotInstalled = oauthError === 'ECANotInstalled';
+  const installUrl = oauthNotice.installUrl;
+  const installOrgType = oauthNotice.orgType;
+  const installInstanceUrl = oauthNotice.instanceUrl;
+  // Popup is open from the first render (the initializer reads the captured
+  // params); no effect/setState needed.
+  const [installModalOpen, setInstallModalOpen] = useState<boolean>(
+    () => oauthError === 'ECANotInstalled' && !!installUrl
+  );
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -128,6 +161,26 @@ export default function LoginFlow() {
   // (the Go to dashboard CTA remains). null = unknown while the status loads;
   // the skip button only renders once we know GitHub is NOT connected.
   const [githubConnected, setGithubConnected] = useState<boolean | null>(null);
+
+  // The OAuth callback lands here as a full-page redirect with the outcome in
+  // the URL (?error= / installUrl / orgType / instanceUrl). The lazy
+  // initializer above has already consumed them by first paint (popup or
+  // banner), so scrub them now — a refresh must NOT re-trigger the popup or
+  // re-show the banner. history.replaceState only touches the address bar;
+  // this render keeps the values it captured (same pattern as the workspace's
+  // redirect-notice scrub). step/redirectTo are untouched.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    let changed = false;
+    for (const key of ['error', 'installUrl', 'orgType', 'instanceUrl']) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.delete(key);
+        changed = true;
+      }
+    }
+    if (changed) window.history.replaceState({}, '', url.toString());
+  }, []);
 
   // Recover position: signed-in users jump past step 1; ?step=2/3 (from the
   // header / connect CTA) jumps straight to that step.
@@ -292,6 +345,18 @@ export default function LoginFlow() {
     startConnect(orgType);
   };
 
+  // "Re-check after installing" inside the popup: retry the OAuth connect for
+  // the same org type. After the admin installs the connector, this completes
+  // the sign-in; scratch orgs re-use the instance URL echoed by the backend.
+  const retryConnectAfterInstall = () => {
+    setInstallModalOpen(false);
+    if (installOrgType === 'scratch') {
+      startConnect('scratch', installInstanceUrl);
+    } else {
+      startConnect(installOrgType as 'production' | 'sandbox');
+    }
+  };
+
   const Steps = [1, 2, 3];
 
   return (
@@ -326,7 +391,10 @@ export default function LoginFlow() {
           ))}
         </div>
 
-        {oauthErrorMessage && (
+        {/* Banner shows for every OAuth failure EXCEPT while the install popup
+            is up (the popup IS the message). Dismissing the popup brings the
+            banner back so the failure context is never silently lost. */}
+        {oauthErrorMessage && !(ecaNotInstalled && installUrl && installModalOpen) && (
           <div className="mb-6 rounded-xl border border-brand-refused/30 bg-brand-refused-bg px-4 py-3 text-sm text-brand-refused animate-fade-in">
             Salesforce sign-in failed: {oauthErrorMessage}
           </div>
@@ -596,6 +664,24 @@ export default function LoginFlow() {
           Forge · Enlight Lab · {new Date().getFullYear()}
         </p>
       </div>
+
+      {/* ECA-not-installed popup: install link + steps instead of a dead-end
+          error line. Reuses the shared install modal (same 3-step anatomy as
+          the workspace's package-required popup). */}
+      <PackageInstallModal
+        isOpen={installModalOpen}
+        onClose={() => setInstallModalOpen(false)}
+        health={
+          {
+            orgId: 'pending',
+            orgType: installOrgType,
+            status: 'missing',
+            installUrl: installUrl || undefined,
+          } satisfies PackageHealth
+        }
+        isRechecking={connecting !== null}
+        onRecheck={retryConnectAfterInstall}
+      />
     </div>
   );
 }
