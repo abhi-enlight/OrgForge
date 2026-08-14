@@ -29,6 +29,35 @@ function ruleBasedFallback(message) {
 }
 
 /**
+ * Conversation-continuation fallback (the "classifier forgets the context"
+ * fix). When the model AND the rule lexicon are both unsure about a SHORT
+ * message, but the conversation has an established capability, continue it
+ * instead of re-asking — a user answering the agent's clarifying questions
+ * ("create new", "no escalation") is not a new ambiguous request. EC-24's
+ * never-guess still applies: this fires only where we would otherwise
+ * `clarify`, and only for terse follow-ups — a long standalone request with
+ * no match still clarifies, and a confident model verdict is never overridden.
+ *
+ * @param {string} message - the raw user prompt
+ * @param {{lastCapability?: 'agent'|'org_change'|'both'|null}} [context] - what
+ *   the session was already doing (computed server-side from the spine)
+ * @returns {object|null} a route decision, or null when there is no established
+ *   capability to continue
+ */
+function contextFollowUpFallback(message, context) {
+  const lastCapability = context?.lastCapability;
+  if (!lastCapability || lastCapability === 'clarify' || !CAPABILITIES.includes(lastCapability)) return null;
+  const trimmed = String(message || '').trim();
+  if (!trimmed || trimmed.length > 120) return null;
+  return {
+    capability: lastCapability,
+    confidence: 0.7,
+    reason: 'Conversation follow-up — continuing the established capability',
+    overrideSource: 'context',
+  };
+}
+
+/**
  * The one-brain router (plan §7.1). Decision order:
  *
  *   [0] user pinned capability (UI chip)  → bypass classifier entirely
@@ -42,7 +71,11 @@ function ruleBasedFallback(message) {
  * @param {(message: string, opts?: object) => Promise<{capability: string, confidence: number, reason: string}>} [opts.classifier]
  * @param {'agent'|'org_change'|'both'|'clarify'} [opts.pinned] - UI chip override
  * @param {number} [opts.minConfidence] - below this → clarify (default 0.6)
- * @returns {Promise<{capability: string, confidence: number, reason: string, overrideSource: 'user_chip'|'model'|'deterministic'|'clarify'}>}
+ * @param {{digest?: string, lastCapability?: 'agent'|'org_change'|'both'|null}} [opts.context]
+ *   - what already happened in this session (server passes the spine digest +
+ *   the last non-clarify capability). Feeds the classifier AND the
+ *   conversation-continuation fallback.
+ * @returns {Promise<{capability: string, confidence: number, reason: string, overrideSource: 'user_chip'|'model'|'deterministic'|'context'|'clarify'}>}
  */
 export async function routeIntent(message, opts = {}) {
   const classifier = opts.classifier || classifyWithGemini;
@@ -58,15 +91,18 @@ export async function routeIntent(message, opts = {}) {
     };
   }
 
-  // [1] Classifier (advisory).
+  // [1] Classifier (advisory) — with the session context so a terse follow-up
+  // (an answer to the assistant's question) routes by conversation, not by the
+  // message in isolation.
   let model;
   try {
-    model = await classifier(String(message || ''), opts);
+    model = await classifier(String(message || ''), { ...opts, context: opts.context?.digest || '' });
   } catch (err) {
     console.error('[routeIntent] classifier failed:', err.message);
     // An unreachable model must never silently route an AMBIGUOUS request, but
     // it also must not stall an UNAMBIGUOUS one: fall back to the deterministic
-    // rules (the same lexicon the chip previews). Rules unsure → fail closed.
+    // rules (the same lexicon the chip previews). Rules unsure → continue the
+    // established conversation when there is one, else fail closed.
     const fallback = ruleBasedFallback(message);
     if (fallback) {
       return {
@@ -76,6 +112,8 @@ export async function routeIntent(message, opts = {}) {
         overrideSource: 'deterministic',
       };
     }
+    const cont = contextFollowUpFallback(message, opts.context);
+    if (cont) return cont;
     return {
       capability: 'clarify',
       confidence: 0,
@@ -109,6 +147,11 @@ export async function routeIntent(message, opts = {}) {
         overrideSource: 'deterministic',
       };
     }
+    // [3.5] Conversation continuation: the model and the rules are both unsure,
+    // but the session was already doing something (e.g. the user is answering
+    // the agent's clarifying questions) — continue it instead of re-asking.
+    const cont = contextFollowUpFallback(message, opts.context);
+    if (cont) return cont;
     // [4] Still unknown → clarify, never guess (EC-24, §7.4).
     return {
       capability: 'clarify',

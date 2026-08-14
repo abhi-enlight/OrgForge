@@ -29,6 +29,13 @@ import PackageRequiredGate from '@/components/org/PackageRequiredGate';
 const GREETING =
   "Hi, I'm OrgForge, your Salesforce copilot. Ask me to **build or update an agent**, or to make a **governed org change** (validation rules, permission sets, fields).";
 
+// Answers to the agent's clarifying questions. Rendered as quick-reply
+// buttons under an agent question, and each one is sent PINNED to the agent
+// capability — a terse answer like "yes" must never be re-classified by the
+// router in isolation (the classifier-forgets-context failure mode). "You
+// decide" is the agent's own suggested phrasing for handing it the choice.
+const QUICK_AGENT_REPLIES = ['Yes', 'No', 'You decide'];
+
 /** crypto.randomUUID is unavailable in non-secure contexts (http on LAN IP) — same fallback everywhere (review finding). */
 function makeId(): string {
   try {
@@ -195,6 +202,25 @@ export default function ChatPage() {
     return () => clearTimeout(timer);
   }, [promptParam]);
 
+  // Quick replies: when the agent just asked a question — the last message is
+  // an agent turn ending in "?" and nothing else is running — render
+  // Yes/No/You decide buttons under it. Each sends its answer pinned to the
+  // agent capability, so answers to the agent's clarifying questions bypass
+  // the router entirely. Hidden while the user has pinned another chip mode
+  // (that choice wins) and while agents are unavailable (the send would be
+  // gated anyway).
+  const awaitingAgentAnswer = useMemo(() => {
+    if (isBuilding || agentsUnavailable || safePin !== null) return false;
+    const last = messages[messages.length - 1];
+    return Boolean(
+      last &&
+        last.role === 'assistant' &&
+        last.capability === 'agent' &&
+        last.type === 'message' &&
+        /\?\s*$/.test(last.content)
+    );
+  }, [messages, isBuilding, agentsUnavailable, safePin]);
+
   // Auto-scroll to the bottom unless the user scrolled up (300px threshold).
   const handleScroll = useCallback(() => {
     const el = chatContainerRef.current;
@@ -223,7 +249,7 @@ export default function ChatPage() {
   }, []);
 
   const startChat = useCallback(
-    async (overridePrompt?: string) => {
+    async (overridePrompt?: string, overridePin?: CapabilityPin) => {
       const text = overridePrompt ?? input;
       if (!text.trim() || isBuilding || !org) return;
       if (!overridePrompt) {
@@ -263,9 +289,12 @@ export default function ChatPage() {
       //     agent engine on an attention org.
       // An explicit org_change pin is the user's deliberate choice and is
       // never gated; a `clarify` verdict flows through (the server asks).
+      // The effective pin: a per-send override (quick replies to the agent's
+      // questions carry `agent`) wins over the chip for this one send.
+      const effectivePin = overridePin ?? safePin;
       let sendCapability: CapabilityPin = null;
       let sendCapabilitySource: 'client' | 'readiness_gate' | undefined;
-      if (agentsUnavailable && safePin !== 'org_change') {
+      if (agentsUnavailable && effectivePin !== 'org_change') {
         const verdict = classifyWithStub(text);
         if (verdict.capability === 'agent') {
           // Richer block notice (type gate_block): an amber card with the
@@ -310,7 +339,7 @@ export default function ChatPage() {
             orgId: org.id,
             capability: sendCapability ?? undefined,
             capabilitySource: sendCapabilitySource,
-            pinned: safePin ?? undefined,
+            pinned: effectivePin ?? undefined,
             sessionId: sessionIdRef.current ?? undefined,
             file: overridePrompt ? undefined : (attachment ?? undefined),
           },
@@ -792,6 +821,25 @@ export default function ChatPage() {
                 }
                 return <MessageBubble key={msg.id} msg={msg} />;
               })}
+
+              {/* Quick replies to the agent's clarifying question — sent pinned
+                  to the agent so a terse answer is never re-routed. */}
+              {awaitingAgentAnswer && (
+                <div className="flex justify-end">
+                  <div className="flex flex-wrap justify-end gap-2 max-w-[85%]">
+                    {QUICK_AGENT_REPLIES.map((reply) => (
+                      <button
+                        key={reply}
+                        type="button"
+                        onClick={() => startChat(reply, 'agent')}
+                        className="inline-flex items-center rounded-full border border-brand-blue/30 bg-white px-3.5 py-1.5 text-xs font-semibold text-brand-blue hover:bg-brand-blue hover:text-white transition-colors cursor-pointer"
+                      >
+                        {reply}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {resetNote && (
                 <div className="flex justify-center" role="status">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-brand-border px-3 py-1 text-xs text-slate-500 shadow-sm animate-fade-in">

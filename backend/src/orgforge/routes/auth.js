@@ -75,6 +75,15 @@ router.post('/salesforce/connect', requireAuth, async (req, res) => {
     const { orgType, alias, instanceUrl } = connectSchema.parse(req.body);
     const { authUrl, state, codeVerifier } = salesforceClient.generateAuthUrl(orgType, instanceUrl);
 
+    let origin = req.headers.origin;
+    if (!origin && req.headers.referer) {
+      try {
+        origin = new URL(req.headers.referer).origin;
+      } catch {
+        /* ignore invalid referer */
+      }
+    }
+
     // Persist PKCE verifier + user context to Redis (TTL 10 min).
     // Survives restarts and works across horizontally-scaled instances.
     await setOAuthState(state, {
@@ -82,7 +91,8 @@ router.post('/salesforce/connect', requireAuth, async (req, res) => {
       orgType,
       instanceUrl,
       userId: req.user.id,
-      alias: alias || 'Salesforce Org'
+      alias: alias || 'Salesforce Org',
+      origin
     });
 
     res.json({ authUrl, state });
@@ -100,7 +110,18 @@ router.get('/salesforce/callback', async (req, res) => {
   try {
     const { code, state, error, error_description } = req.query;
     
-    const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
+    let corsOrigin = process.env.CORS_ORIGIN?.split(',')[0].trim() || 'http://localhost:3000';
+    let session = null;
+    if (state) {
+      try {
+        session = await getOAuthState(state);
+        if (session?.origin) {
+          corsOrigin = session.origin;
+        }
+      } catch {
+        /* state lookup is best-effort */
+      }
+    }
     
     if (error) {
       // The "external client app is not installed" failure means the OrgForge
@@ -113,18 +134,9 @@ router.get('/salesforce/callback', async (req, res) => {
       const message = String(error_description || error || '');
       const ecaMissing = /external client app|not installed|isn'?t installed/i.test(message);
 
-      let orgType = 'production';
-      let instanceUrl = '';
+      let orgType = session?.orgType || 'production';
+      let instanceUrl = session?.instanceUrl || '';
       if (state) {
-        try {
-          const session = await getOAuthState(state);
-          if (session) {
-            orgType = session.orgType || 'production';
-            instanceUrl = session.instanceUrl || '';
-          }
-        } catch {
-          /* state lookup is best-effort — fall back to defaults */
-        }
         try {
           await deleteOAuthState(state);
         } catch {
@@ -153,7 +165,6 @@ router.get('/salesforce/callback', async (req, res) => {
       return res.redirect(`${corsOrigin}/login?step=2&error=MissingAuthData`);
     }
 
-    const session = await getOAuthState(state);
     if (!session) {
       return res.redirect(`${corsOrigin}/login?step=2&error=InvalidOrExpiredState`);
     }

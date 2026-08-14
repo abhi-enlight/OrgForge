@@ -82,6 +82,34 @@ router.get('/install-url', async (req, res) => {
 });
 
 /**
+ * Lists the GitHub accounts the app is already installed on. This recovers
+ * the dead-end where a user installed the app BEFORE signing in: GitHub then
+ * shows the app's settings page instead of redirecting back with an
+ * installation_id, so the callback never fires and the flow stalls. The
+ * frontend shows these installations and lets the user pick one to connect
+ * (then reuses the claim-gated /repos flow below).
+ *
+ * Claim-gated like /repos: the user must have started the install flow (or
+ * requested the install URL) within the last 10 minutes, so it is not a
+ * standing enumeration endpoint. Only id/account login are returned.
+ */
+router.get('/installations', async (req, res) => {
+  try {
+    if (!(await assertPendingClaim(req.tenantId))) {
+      return res.status(403).json({ error: 'No pending GitHub install. Start a new install from Settings first.' });
+    }
+    if (!githubService.isConfigured()) {
+      return res.status(503).json({ error: 'GitHub App is not configured. Set GITHUB_APP_ID and GITHUB_PRIVATE_KEY in the backend environment.' });
+    }
+    const installations = await githubService.listInstallations();
+    res.json({ installations });
+  } catch (err) {
+    console.error('Failed to list GitHub installations:', err.message);
+    res.status(500).json({ error: 'Failed to list existing GitHub installations' });
+  }
+});
+
+/**
  * Lists repos the given installation grants access to, so the operator can
  * choose which repo receives the audit trail. Requires an active pending
  * claim (the user must have just requested the install URL) — prevents

@@ -19,6 +19,13 @@ interface GithubStatus {
   connectedAt?: string | null;
 }
 
+interface ExistingInstallation {
+  id: number;
+  account: string | null;
+  accountType: string | null;
+  htmlUrl?: string | null;
+}
+
 function timeAgo(iso?: string | null): string {
   if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
@@ -82,6 +89,12 @@ export default function GithubConnectCard({
   const [selectedRepo, setSelectedRepo] = useState('');
   const [reposLoading, setReposLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  // Already-installed recovery: when the GitHub App was installed before this
+  // flow, GitHub shows the app's settings page and never redirects back with
+  // an installation_id — the user picks an existing installation instead.
+  // null = not loaded yet; [] = checked, none found.
+  const [existingInstallations, setExistingInstallations] = useState<ExistingInstallation[] | null>(null);
+  const [existingLoading, setExistingLoading] = useState(false);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -105,6 +118,26 @@ export default function GithubConnectCard({
     return () => clearTimeout(timer);
   }, [loadStatus, recheckKey]);
 
+  // Shared repo fetch for both entry points (install callback and the
+  // already-installed picker): sets the pending installation id, then loads
+  // the claim-gated repo list for it.
+  const loadRepos = useCallback(async (installationId: string) => {
+    setPendingInstallId(installationId);
+    setError(null);
+    setReposLoading(true);
+    try {
+      const body = await apiFetch<{ repos: RepoOption[] }>(
+        `/api/v1/auth/github/repos?installationId=${encodeURIComponent(installationId)}`
+      );
+      setRepos(body.repos || []);
+      setSelectedRepo(body.repos?.[0] ? `${body.repos[0].owner}/${body.repos[0].name}` : '');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to list repositories for this installation');
+    } finally {
+      setReposLoading(false);
+    }
+  }, []);
+
   // GitHub install callback: ?github=install&installation_id=... → load repos.
   const githubParam = searchParams.get('github');
   const installIdParam = searchParams.get('installation_id');
@@ -117,20 +150,7 @@ export default function GithubConnectCard({
         return;
       }
       if (githubParam !== 'install' || !installIdParam) return;
-      setPendingInstallId(installIdParam);
-      setError(null);
-      setReposLoading(true);
-      try {
-        const body = await apiFetch<{ repos: RepoOption[] }>(
-          `/api/v1/auth/github/repos?installationId=${encodeURIComponent(installIdParam)}`
-        );
-        setRepos(body.repos || []);
-        setSelectedRepo(body.repos?.[0] ? `${body.repos[0].owner}/${body.repos[0].name}` : '');
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to list repositories for this installation');
-      } finally {
-        setReposLoading(false);
-      }
+      await loadRepos(installIdParam);
       // Clean the query params so a refresh doesn't re-trigger the flow
       // (usePathname — App Router useRouter has no pathname property). Keep
       // unrelated params like ?step= on /login so onboarding position survives.
@@ -138,7 +158,7 @@ export default function GithubConnectCard({
       router.replace(cleanTarget);
     };
     run();
-  }, [githubParam, installIdParam, stepParam, pathname, router]);
+  }, [githubParam, installIdParam, stepParam, pathname, router, loadRepos]);
 
   const handleInstallClick = async () => {
     setGettingInstallUrl(true);
@@ -151,6 +171,31 @@ export default function GithubConnectCard({
     } finally {
       setGettingInstallUrl(false);
     }
+  };
+
+  // "Already installed" recovery. GitHub only redirects back with an
+  // installation_id for a NEW install; an install that predates this flow
+  // leaves the user stranded on GitHub's app settings page. Re-mint the
+  // pending claim (reusing /install-url so there's no separate claim endpoint;
+  // the returned URL is intentionally not opened) then list the accounts the
+  // app is installed on.
+  const handleExistingInstallClick = async () => {
+    setExistingLoading(true);
+    setError(null);
+    try {
+      await apiFetch<{ installUrl: string }>('/api/v1/auth/github/install-url');
+      const body = await apiFetch<{ installations: ExistingInstallation[] }>('/api/v1/auth/github/installations');
+      setExistingInstallations(body.installations || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to check for existing installations');
+    } finally {
+      setExistingLoading(false);
+    }
+  };
+
+  const handleExistingPick = async (installationId: number) => {
+    setExistingInstallations(null);
+    await loadRepos(String(installationId));
   };
 
   const handleConnect = async () => {
@@ -258,8 +303,62 @@ export default function GithubConnectCard({
           </button>
           <p className={cn('text-xs text-slate-400', compact && 'text-[11px]')}>
             Opens GitHub in a new tab. After installing, choose the repo on the Settings page that opens, then come
-            back here.
+            back here. If you&apos;ve already installed the app, GitHub shows its settings page instead — just come back
+            and connect it below.
           </p>
+
+          {/* Already-installed recovery: GitHub never redirects back when the
+              app was installed before this flow — offer the existing-account
+              picker instead of leaving the user stranded. */}
+          {!pendingInstallId && (
+            <>
+              <button
+                type="button"
+                onClick={handleExistingInstallClick}
+                disabled={existingLoading}
+                className="text-xs font-medium text-brand-blue hover:underline transition-colors cursor-pointer disabled:opacity-60"
+              >
+                {existingLoading ? 'Checking…' : 'Already installed? Connect an existing installation'}
+              </button>
+
+              {existingInstallations !== null &&
+                (existingInstallations.length > 0 ? (
+                  <div
+                    className={cn(
+                      'rounded-xl border border-brand-border p-3.5 space-y-2 animate-fade-in',
+                      compact && 'p-3'
+                    )}
+                  >
+                    <p className={cn('text-xs font-medium text-brand-dark', compact && 'text-[11px]')}>
+                      Found the OrgForge Audit Logger already installed on:
+                    </p>
+                    <div className="space-y-1.5">
+                      {existingInstallations.map((inst) => (
+                        <button
+                          key={inst.id}
+                          type="button"
+                          onClick={() => handleExistingPick(inst.id)}
+                          className="w-full flex items-center justify-between gap-2 rounded-lg border border-brand-border bg-white px-3 py-2 text-sm text-slate-700 hover:border-brand-blue/40 hover:bg-brand-surface/60 transition-colors cursor-pointer"
+                        >
+                          <span className="truncate font-medium">{inst.account || `Installation #${inst.id}`}</span>
+                          <span className="text-[11px] text-slate-400 shrink-0">
+                            {inst.accountType === 'Organization' ? 'organization' : 'personal'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className={cn('text-[11px] text-slate-400', compact && 'text-[10px]')}>
+                      Pick the account you installed the app on, then choose the audit repository.
+                    </p>
+                  </div>
+                ) : (
+                  <p className={cn('text-xs text-slate-500', compact && 'text-[11px]')}>
+                    No existing installations found. Use the button above to install the app on GitHub, then come
+                    back.
+                  </p>
+                ))}
+            </>
+          )}
 
           {/* Repo picker after the install callback */}
           {pendingInstallId && (

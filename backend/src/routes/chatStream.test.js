@@ -271,6 +271,40 @@ test('no capability → classifies and logs the decision to routing_log', async 
   assert.equal(res.statusCode, undefined, 'stream completes without error');
 });
 
+// A spine row pre-seeded with capability segments — used to verify the router
+// receives conversation context (the classifier-forgets-context fix).
+function spineDbWith(segments) {
+  return {
+    from: (table) =>
+      table === 'routing_log'
+        ? { insert: async () => ({ error: null }) }
+        : {
+            select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { capability_segments: segments, transcript: null, context_summary: null }, error: null }) }) }) }) }),
+            insert: async () => ({ error: null }),
+            update: () => ({ eq: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }) }),
+          },
+  };
+}
+
+test('server-side routing receives conversation context (digest + lastCapability)', async () => {
+  let seenOpts = null;
+  const { router } = makeRouter({
+    route: async (m, opts) => {
+      seenOpts = opts;
+      return { capability: 'agent', confidence: 1, reason: 'r', overrideSource: 'model' };
+    },
+    db: spineDbWith([
+      { capability: 'agent', engineRef: 'agentforce', startedAt: 'x', lastMessageAt: 'x', summary: 'Asked clarifying questions about the Lead Qualification Agent build' },
+    ]),
+  });
+  const { res } = invokeRouter(router, { body: { message: 'create new', orgId: ORG } });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.ok(seenOpts, 'router invoked with opts');
+  assert.equal(seenOpts.context.lastCapability, 'agent', 'established capability derived from the spine');
+  assert.ok(seenOpts.context.digest.includes('agent'), 'session digest included for the classifier');
+  assert.ok(frames(res.chunks).some((f) => f.type === 'message'), 'agent engine ran');
+});
+
 test('routing_log table missing (migration 008 pending) → stream proceeds, no 500', async () => {
   const { router } = makeRouter({
     route: async () => ({ capability: 'agent', confidence: 0.9, reason: 'r', overrideSource: 'model' }),

@@ -30,6 +30,30 @@ class GithubService {
   }
 
   /**
+   * List every account the GitHub App is already installed on (App JWT — no
+   * user token needed). Used to recover the flow when a user installs the app
+   * before signing in: GitHub shows the app's settings page instead of
+   * redirecting back with an installation_id, so the frontend lists these
+   * existing installations and lets the user pick the one to connect.
+   *
+   * Only id/account/login are surfaced — never installation tokens or repos.
+   * Account logins are public GitHub data; repo access is still gated behind
+   * the claim-scoped /repos endpoint.
+   */
+  async listInstallations() {
+    if (!this.app) throw new Error('GitHub App is not configured in .env');
+    // App-level octokit (JWT) — GET /app/installations lists all installations
+    // of this app across every account that installed it.
+    const { data } = await this.app.octokit.rest.apps.listInstallations({ per_page: 100 });
+    return (data || []).map((inst) => ({
+      id: inst.id,
+      account: inst.account?.login || null,
+      accountType: inst.account?.type || null,
+      htmlUrl: inst.html_url || null
+    }));
+  }
+
+  /**
    * List the repositories the given installation has granted this app access
    * to. Used so the operator can pick which repo receives the audit trail.
    */

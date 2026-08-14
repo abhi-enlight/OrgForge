@@ -92,6 +92,33 @@ function hashPrompt(message) {
 }
 
 /**
+ * The session's established capability — the newest non-clarify segment in the
+ * spine. Drives the router's conversation-continuation fallback: a terse
+ * follow-up (an answer to the assistant's question) routes to what the
+ * conversation was already doing instead of being classified in isolation.
+ * Handles both JSONB arrays and legacy string-encoded segments.
+ *
+ * @param {object|null} spine - a chat_sessions row from getChatSession
+ * @returns {'agent'|'org_change'|'both'|null}
+ */
+function deriveLastCapability(spine) {
+  let segments = spine?.capability_segments;
+  if (typeof segments === 'string') {
+    try {
+      segments = JSON.parse(segments);
+    } catch {
+      segments = [];
+    }
+  }
+  if (!Array.isArray(segments)) return null;
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const cap = segments[i]?.capability;
+    if (cap && cap !== 'clarify') return cap;
+  }
+  return null;
+}
+
+/**
  * POST /api/v1/chat/stream (plan §10.1/§10.2) — the Copilot SSE endpoint.
  *
  * Takes a routed intent, hands off to the Agent engine (Agentforce
@@ -102,9 +129,12 @@ function hashPrompt(message) {
  * Order of operations matters:
  *   0. attachment (multer)     → document text injected into the engine
  *      prompt; image/empty/parse-failure → 400 (plain JSON, pre-SSE)
+ *   0.5 session spine read     → durable context memory (feeds the router's
+ *      conversation-aware classification AND the engines' resume/digest)
  *   1. zod validate            → 400 (plain JSON, pre-SSE)
  *   2. resolve routed intent   → client capability is authoritative; else route
- *      (routing + ai_logs always see the RAW message, never the injection)
+ *      WITH the session context (routing + ai_logs always see the RAW
+ *      message, never the injection)
  *   3. single-flight check     → 409 (plain JSON, pre-SSE)
  *   4. resolve live credentials→ 401/404 "reconnect" (EC-10), pre-SSE
  *   5. SSE up, then engines    → all frames via the unified envelope
@@ -269,6 +299,49 @@ export function createChatStreamRouter({
         }
       }
 
+      // ── 0.5 Durable context memory (read) ───────────────────────────────
+      // Read this session's spine BEFORE routing: besides feeding the engines
+      // (cold-start resume + prior-context digest below), the spine gives the
+      // ROUTER the conversation it's routing INTO — without it, a terse
+      // follow-up like "create new" (the user answering the agent's clarifying
+      // questions) is classified in isolation and wrongly bounces back with
+      // "I need a bit more detail to route this request" (the classifier
+      // forgetting the conversation). Best-effort by design — a DB failure or
+      // a missing table (migration 008 pending) degrades to "no memory" and
+      // never breaks routing. The read is triple-filtered on (user_id, org_id,
+      // session_id), so it can never surface another session's or another
+      // user's conversation.
+      let spine = null;
+      try {
+        // Same 'default' normalization as persistSegments so the memory read
+        // always targets the same row the segments are written to.
+        spine = await getSession({ db, userId: req.user.id, orgId, sessionId: sessionId || 'default' });
+      } catch (spineErr) {
+        console.warn('[chat/stream] session spine read failed — continuing without memory:', spineErr.message);
+      }
+      let spineTurns = [];
+      if (spine?.transcript) {
+        if (Array.isArray(spine.transcript)) spineTurns = spine.transcript;
+        else if (typeof spine.transcript === 'string') {
+          try {
+            const parsed = JSON.parse(spine.transcript);
+            if (Array.isArray(parsed)) spineTurns = parsed;
+          } catch { /* non-JSON legacy value — no turns */ }
+        }
+      }
+      const resumeCtx = {
+        turns: spineTurns,
+        summary: spine?.context_summary || null,
+      };
+      const sessionDigest = buildSessionDigest(spine);
+      // Structured context for the router: the digest (for the classifier) +
+      // the established capability (for the deterministic continuation
+      // fallback in routeIntent).
+      const routeContext = {
+        digest: sessionDigest || '',
+        lastCapability: deriveLastCapability(spine),
+      };
+
       // ── 1. Resolve the routed intent ────────────────────────────────────
       let decision;
       if (routedCapability) {
@@ -282,7 +355,7 @@ export function createChatStreamRouter({
           await logRouting(routedCapability, 'readiness_gate', 1);
         }
       } else {
-        decision = await route(message, { pinned });
+        decision = await route(message, { pinned, context: routeContext });
         await logRouting(decision.capability, decision.overrideSource, decision.confidence);
       }
 
@@ -396,37 +469,12 @@ export function createChatStreamRouter({
         });
       }
 
-      // ── 3.75 Durable context memory ──────────────────────────────────────
-      // Read this session's spine ONCE per request: it feeds (a) the agent
-      // engine's cold-start resume (bounded transcript + summary) and (b) the
-      // org engine's prior-context digest. Best-effort by design — a DB
-      // failure or a missing table (migration 008 pending) degrades to "no
-      // memory" and never breaks the chat. The read is triple-filtered on
-      // (user_id, org_id, session_id), so it can never surface another
-      // session's or another user's conversation.
-      let spine = null;
-      try {
-        // Same 'default' normalization as persistSegments so the memory read
-        // always targets the same row the segments are written to.
-        spine = await getSession({ db, userId: req.user.id, orgId, sessionId: sessionId || 'default' });
-      } catch (spineErr) {
-        console.warn('[chat/stream] session spine read failed — continuing without memory:', spineErr.message);
-      }
-      let spineTurns = [];
-      if (spine?.transcript) {
-        if (Array.isArray(spine.transcript)) spineTurns = spine.transcript;
-        else if (typeof spine.transcript === 'string') {
-          try {
-            const parsed = JSON.parse(spine.transcript);
-            if (Array.isArray(parsed)) spineTurns = parsed;
-          } catch { /* non-JSON legacy value — no turns */ }
-        }
-      }
-      const resumeCtx = {
-        turns: spineTurns,
-        summary: spine?.context_summary || null,
-      };
-      const sessionDigest = buildSessionDigest(spine);
+      // ── 3.75 Durable context memory (consumed) ──────────────────────────
+      // The spine read happened at 0.5 (before routing); here the engines
+      // consume it: (a) the agent engine's cold-start resume (bounded
+      // transcript + summary) and (b) the org engine's prior-context digest.
+      // Best-effort by design — a missing table (migration 008 pending)
+      // degrades to "no memory" and never breaks the chat.
 
       // ── 4. SSE up ───────────────────────────────────────────────────────
       sse = emit(req, res);

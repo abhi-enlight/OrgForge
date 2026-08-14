@@ -55,24 +55,56 @@ function radiusTone(r?: string): 'warning' | 'info' | 'pass' | 'muted' {
   return 'muted';
 }
 
-/** Pulls flat numeric/string metrics out of the impact brief for display. */
+/**
+ * Pulls compact numeric metrics out of the impact brief for display. Only
+ * short scalars belong in a metric tile — prose fields (summaryNarrative,
+ * rationale, …) are multi-sentence text that must render as a paragraph, never
+ * as a tile value: a full narrative inside the narrow `text-base` tile wraps
+ * every few words and breaks the card layout (the summaryNarrative-as-tile
+ * bug). The three meaningful nested counts mirror the workspace impact card.
+ */
 function metricsOf(payload: unknown): Array<{ label: string; value: string | number }> {
   const out: Array<{ label: string; value: string | number }> = [];
   if (!payload || typeof payload !== 'object') return out;
   const p = payload as Record<string, unknown>;
-  // REF-05 context: surface records the change would violate (nested dataImpact).
   const dataImpact = p.dataImpact as Record<string, unknown> | undefined;
-  if (dataImpact && typeof dataImpact.violatingRecords === 'number') {
-    out.push({ label: 'records affected', value: dataImpact.violatingRecords });
+  const dependency = p.dependencyImpact as Record<string, unknown> | undefined;
+  const permission = p.permissionImpact as Record<string, unknown> | undefined;
+  if (dependency && typeof dependency.referencingComponentsCount === 'number') {
+    out.push({ label: 'referencing components', value: dependency.referencingComponentsCount });
   }
+  // REF-05 context: surface records the change would violate (nested dataImpact).
+  if (dataImpact) {
+    if (typeof dataImpact.violatingRecordsCount === 'number') {
+      out.push({ label: 'records affected', value: dataImpact.violatingRecordsCount });
+    } else if (typeof dataImpact.violatingRecords === 'number') {
+      out.push({ label: 'records affected', value: dataImpact.violatingRecords });
+    }
+  }
+  if (permission && typeof permission.affectedUsersCount === 'number') {
+    out.push({ label: 'affected users', value: permission.affectedUsersCount });
+  }
+  // Any remaining top-level scalars — numbers always, strings only when SHORT
+  // (status-like). Narrative/description fields never render as tiles.
   for (const [key, value] of Object.entries(p)) {
-    if (key === 'blastRadiusClassification' || key === 'dataImpact') continue;
-    if (typeof value === 'number' || typeof value === 'string') {
+    if (
+      key === 'blastRadiusClassification' ||
+      key === 'dataImpact' ||
+      key === 'dependencyImpact' ||
+      key === 'permissionImpact' ||
+      key === 'integrationImpact' ||
+      key === 'summaryNarrative'
+    ) {
+      continue;
+    }
+    if (typeof value === 'number') {
       out.push({
-        label: key
-          .replace(/Count$/, '')
-          .replace(/([a-z])([A-Z])/g, '$1 $2')
-          .toLowerCase(),
+        label: key.replace(/Count$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase(),
+        value,
+      });
+    } else if (typeof value === 'string' && value.length <= 32) {
+      out.push({
+        label: key.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase(),
         value,
       });
     }
@@ -122,6 +154,11 @@ export default function OrgChangeCard({ msg }: { msg: ChatMessage }) {
   // ── Blast radius ───────────────────────────────────────────────────────
   if (card === 'blast_radius') {
     const radius = String(p.blastRadiusClassification || 'Unknown');
+    // The executive narrative is PROSE — it renders as a paragraph, never as
+    // a metric tile (the broken-layout bug: a full narrative inside the
+    // narrow tile wrapped every few words and overflowed the card).
+    const narrative =
+      typeof p.summaryNarrative === 'string' && p.summaryNarrative.trim() ? String(p.summaryNarrative) : null;
     const metrics = metricsOf(payload);
     return (
       <div className="flex justify-start">
@@ -131,10 +168,11 @@ export default function OrgChangeCard({ msg }: { msg: ChatMessage }) {
             <span className="text-sm font-semibold text-brand-dark min-w-0 truncate">{title}</span>
             <Pill tone={radiusTone(radius)}>{radius}</Pill>
           </div>
-          <div className="p-4">
-            <p className="text-xs text-slate-500 mb-3">{content}</p>
+          <div className="p-4 space-y-3">
+            <p className="text-xs text-slate-500">{content}</p>
+            {narrative && <p className="text-xs text-slate-700 leading-relaxed">{narrative}</p>}
             {metrics.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {metrics.map((m) => (
                   <div key={m.label} className="rounded-xl border border-brand-border bg-brand-surface/40 px-3 py-2.5 text-center">
                     <p className="text-base font-bold text-brand-dark">{m.value}</p>
