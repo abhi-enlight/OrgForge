@@ -25,16 +25,21 @@ import BuildProgressCard, { PROGRESS_TYPES, type ProgressStep } from '@/componen
 import CapabilityChip, { type CapabilityPin, type StubVerdict } from '@/components/chat/CapabilityChip';
 import StarterCards from '@/components/chat/StarterCards';
 import PackageRequiredGate from '@/components/org/PackageRequiredGate';
+import { extractQuickReplies, type QuickReplyOption } from '@/lib/quickReplies';
 
 const GREETING =
   "Hi, I'm OrgForge 👋 Tell me what you'd like to do — build an agent, add a rule, update permissions, or make changes to your Salesforce org.";
 
-// Answers to the agent's clarifying questions. Rendered as quick-reply
-// buttons under an agent question, and each one is sent PINNED to the agent
-// capability — a terse answer like "yes" must never be re-classified by the
-// router in isolation (the classifier-forgets-context failure mode). "You
-// decide" is the agent's own suggested phrasing for handing it the choice.
-const QUICK_AGENT_REPLIES = ['Yes', 'No', 'You decide'];
+// Chat persistence TTL: 24 hours of inactivity or 7 days maximum session lifetime
+const INACTIVITY_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_SESSION_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+interface SavedChatState {
+  sessionId: string;
+  messages: ChatMessage[];
+  lastActiveAt: number;
+  createdAt: number;
+}
 
 /** crypto.randomUUID is unavailable in non-secure contexts (http on LAN IP) — same fallback everywhere (review finding). */
 function makeId(): string {
@@ -130,6 +135,7 @@ export default function ChatPage() {
   // (react-hooks/refs forbids render-phase access).
   const sessionIdRef = useRef<string | null>(null);
   const sessionOrgRef = useRef<string | null>(null);
+  const createdAtRef = useRef<number>(Date.now());
   // The exact storage key in use, so Clear/Stop&reset rotates under the SAME
   // key the session effect initialized (set once getUser resolves).
   const sessionKeyRef = useRef<string | null>(null);
@@ -145,15 +151,47 @@ export default function ChatPage() {
   useEffect(() => {
     if (!org || !userId || sessionOrgRef.current === org.id) return;
     sessionOrgRef.current = org.id;
-    const storageKey = `forge.chat.session.${userId}.${org.id}`;
-    sessionKeyRef.current = storageKey;
+    const sessionKey = `forge.chat.session.${userId}.${org.id}`;
+    const activeChatKey = `forge.chat.active.${userId}.${org.id}`;
+    sessionKeyRef.current = sessionKey;
+
     try {
-      const stored = window.sessionStorage.getItem(storageKey);
+      // 1. Restore active conversation across browser refresh or navigation (Agents/Settings/Dashboard)
+      const savedRaw = window.localStorage.getItem(activeChatKey) || window.sessionStorage.getItem(activeChatKey);
+      if (savedRaw) {
+        const saved: SavedChatState = JSON.parse(savedRaw);
+        const inactivityDuration = Date.now() - (saved.lastActiveAt || 0);
+        const totalSessionAge = Date.now() - (saved.createdAt || 0);
+
+        // Check if the chat is within inactivity limit and total lifetime
+        if (
+          inactivityDuration < INACTIVITY_TTL_MS &&
+          totalSessionAge < MAX_SESSION_AGE_MS &&
+          Array.isArray(saved.messages) &&
+          saved.messages.length > 0
+        ) {
+          sessionIdRef.current = saved.sessionId;
+          createdAtRef.current = saved.createdAt || Date.now();
+          window.sessionStorage.setItem(sessionKey, saved.sessionId);
+          setActiveSessionId(saved.sessionId);
+          setMessages(saved.messages);
+          return;
+        } else {
+          // Expired due to inactivity or age — clean up stale cache
+          window.localStorage.removeItem(activeChatKey);
+          window.sessionStorage.removeItem(activeChatKey);
+        }
+      }
+
+      // 2. Otherwise start fresh or reuse the tab session ID
+      const stored = window.sessionStorage.getItem(sessionKey);
       sessionIdRef.current = stored && stored.length <= 200 ? stored : makeSessionId();
-      window.sessionStorage.setItem(storageKey, sessionIdRef.current);
+      createdAtRef.current = Date.now();
+      window.sessionStorage.setItem(sessionKey, sessionIdRef.current);
     } catch {
       // Storage unavailable — fall back to an in-memory session id.
       sessionIdRef.current = sessionIdRef.current ?? makeSessionId();
+      createdAtRef.current = Date.now();
     }
     setActiveSessionId(sessionIdRef.current);
   }, [org, userId]);
@@ -202,23 +240,21 @@ export default function ChatPage() {
     return () => clearTimeout(timer);
   }, [promptParam]);
 
-  // Quick replies: when the agent just asked a question — the last message is
-  // an agent turn ending in "?" and nothing else is running — render
-  // Yes/No/You decide buttons under it. Each sends its answer pinned to the
-  // agent capability, so answers to the agent's clarifying questions bypass
-  // the router entirely. Hidden while the user has pinned another chip mode
-  // (that choice wins) and while agents are unavailable (the send would be
-  // gated anyway).
-  const awaitingAgentAnswer = useMemo(() => {
-    if (isBuilding || agentsUnavailable || safePin !== null) return false;
+  // Dynamic quick replies: when the agent asks a question or proposes options,
+  // extract tailored, contextual response pills instead of static Yes/No.
+  // Each answer is sent pinned to the agent capability.
+  const dynamicQuickReplies = useMemo<QuickReplyOption[]>(() => {
+    if (isBuilding || agentsUnavailable || safePin !== null) return [];
     const last = messages[messages.length - 1];
-    return Boolean(
+    if (
       last &&
-        last.role === 'assistant' &&
-        last.capability === 'agent' &&
-        last.type === 'message' &&
-        /\?\s*$/.test(last.content)
-    );
+      last.role === 'assistant' &&
+      last.capability === 'agent' &&
+      last.type === 'message'
+    ) {
+      return extractQuickReplies(last.content);
+    }
+    return [];
   }, [messages, isBuilding, agentsUnavailable, safePin]);
 
   // Auto-scroll to the bottom unless the user scrolled up (300px threshold).
@@ -439,6 +475,25 @@ export default function ChatPage() {
     return () => window.removeEventListener('orgforge:confirm-deploy', handleConfirm);
   }, [startChat]);
 
+  // Persist conversation so navigating to Agents/Settings or refreshing keeps the chat intact
+  useEffect(() => {
+    if (!userId || !org || !sessionIdRef.current) return;
+    const activeChatKey = `forge.chat.active.${userId}.${org.id}`;
+    if (messages.length === 0) return;
+    try {
+      const state: SavedChatState = {
+        sessionId: sessionIdRef.current,
+        messages,
+        lastActiveAt: Date.now(),
+        createdAt: createdAtRef.current || Date.now(),
+      };
+      window.localStorage.setItem(activeChatKey, JSON.stringify(state));
+      window.sessionStorage.setItem(activeChatKey, JSON.stringify(state));
+    } catch (e) {
+      console.warn('Failed to persist active chat messages:', e);
+    }
+  }, [messages, userId, org]);
+
   const stopChat = () => {
     abortRef.current?.abort();
     setIsBuilding(false);
@@ -459,7 +514,15 @@ export default function ChatPage() {
       resetChatSession(oldSessionId, org.id).catch(() => {});
     }
     sessionIdRef.current = makeSessionId();
+    createdAtRef.current = Date.now();
     setActiveSessionId(sessionIdRef.current);
+    if (userId) {
+      const activeChatKey = `forge.chat.active.${userId}.${org.id}`;
+      try {
+        window.localStorage.removeItem(activeChatKey);
+        window.sessionStorage.removeItem(activeChatKey);
+      } catch {}
+    }
     // Persist the rotation under the same key the session effect chose; if
     // the user isn't resolved yet (key unknown), the in-memory ref alone is
     // enough — the effect will pick a keyed id once it runs.
@@ -847,19 +910,23 @@ export default function ChatPage() {
                 return <MessageBubble key={msg.id} msg={msg} />;
               })}
 
-              {/* Quick replies to the agent's clarifying question — sent pinned
-                  to the agent so a terse answer is never re-routed. */}
-              {awaitingAgentAnswer && (
-                <div className="flex justify-end">
+              {/* Dynamic contextual quick replies to the agent's question — sent pinned
+                  to the agent capability so answers bypass the router. */}
+              {dynamicQuickReplies.length > 0 && (
+                <div className="flex justify-end animate-fade-in">
                   <div className="flex flex-wrap justify-end gap-2 max-w-[85%]">
-                    {QUICK_AGENT_REPLIES.map((reply) => (
+                    {dynamicQuickReplies.map((reply) => (
                       <button
-                        key={reply}
+                        key={reply.label}
                         type="button"
-                        onClick={() => startChat(reply, 'agent')}
-                        className="inline-flex items-center rounded-full border border-brand-blue/30 bg-white px-3.5 py-1.5 text-xs font-semibold text-brand-blue hover:bg-brand-blue hover:text-white transition-colors cursor-pointer"
+                        onClick={() => startChat(reply.value, 'agent')}
+                        className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-xs font-semibold shadow-xs transition-all cursor-pointer active:scale-[0.98] ${
+                          reply.isPrimary
+                            ? 'border-brand-blue bg-brand-blue text-white hover:bg-brand-blue-hover shadow-soft'
+                            : 'border-brand-blue/30 bg-white text-brand-blue hover:bg-brand-blue/5'
+                        }`}
                       >
-                        {reply}
+                        {reply.label}
                       </button>
                     ))}
                   </div>
