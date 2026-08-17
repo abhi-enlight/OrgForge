@@ -76,10 +76,32 @@ function makeEngine(fakes) {
   return createOrgEngine({ loader: async (file) => fakes[file] });
 }
 
-test('full pipeline emits artifact → blast_radius → refusal_gates → dry_run → deploy → record cards in order', async () => {
+test('unconfirmed initial request stops at dry_run with needsConfirmation: true without deploying', async () => {
   const engine = makeEngine(fakeServices());
   const { events, onEvent } = collect();
   const result = await engine.runOrgChange({ message: 'Add a validation rule to Opportunity', creds: CREDS, userId: 'u1', orgId: '00D1', onEvent });
+
+  const cards = events.filter((e) => e.card).map((e) => e.card);
+  assert.deepEqual(cards, ['artifact', 'blast_radius', 'refusal_gates', 'dry_run']);
+  assert.equal(result.role, 'assistant');
+
+  const dryRun = events.find((e) => e.card === 'dry_run');
+  assert.equal(dryRun.payload.success, true);
+  assert.equal(dryRun.payload.needsConfirmation, true);
+  assert.equal(events.some((e) => e.card === 'deploy'), false);
+  assert.equal(events.some((e) => e.card === 'record'), false);
+});
+
+test('full pipeline on confirmed deploy emits artifact → blast_radius → refusal_gates → dry_run → deploy → record cards in order', async () => {
+  const engine = makeEngine(fakeServices());
+  const { events, onEvent } = collect();
+  const result = await engine.runOrgChange({
+    message: 'Deploy confirmed: Add a validation rule to Opportunity',
+    creds: CREDS,
+    userId: 'u1',
+    orgId: '00D1',
+    onEvent,
+  });
 
   const cards = events.filter((e) => e.card).map((e) => e.card);
   assert.deepEqual(cards, ['artifact', 'blast_radius', 'refusal_gates', 'dry_run', 'deploy', 'record']);
@@ -153,7 +175,7 @@ test('failed dry run stops before a live deploy', async () => {
 test('missing HMAC_SECRET keeps the stream alive with an unsigned-record warning', async () => {
   const engine = makeEngine(fakeServices({ persistError: 'HMAC_SECRET is not configured; refusing to sign audit records.' }));
   const { events, onEvent } = collect();
-  await engine.runOrgChange({ message: 'Add a validation rule to Opportunity', creds: CREDS, userId: 'u1', orgId: '00D1', onEvent });
+  await engine.runOrgChange({ message: 'Deploy confirmed: Add a validation rule to Opportunity', creds: CREDS, userId: 'u1', orgId: '00D1', onEvent });
 
   const record = events.find((e) => e.card === 'record');
   assert.equal(record.payload.persisted, false);
@@ -182,7 +204,7 @@ test('priorContext from the session spine reaches intent parsing + metadata gene
   const engine = makeEngine(fakes);
   const { events, onEvent } = collect();
   await engine.runOrgChange({
-    message: 'Add a validation rule to Opportunity',
+    message: 'Deploy confirmed: Add a validation rule to Opportunity',
     creds: CREDS,
     userId: 'u1',
     orgId: '00D1',

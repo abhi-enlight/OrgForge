@@ -163,10 +163,22 @@ export function createOrgEngine({ loader = defaultLoader } = {}) {
      *   the original `message`.
      * @param {(ev: object) => void} opts.onEvent
      */
-    async runOrgChange({ message, sessionKey, creds, userId, orgId, priorContext, onEvent }) {
+    async runOrgChange({ message, sessionKey, creds, userId, orgId, priorContext, autoDeploy, confirmDeploy, onEvent }) {
       void sessionKey;
       const { accessToken, instanceUrl } = creds || {};
       const orgType = detectOrgType(instanceUrl);
+
+      // Check if this request has explicit deployment confirmation
+      const isExplicitDeploy =
+        Boolean(autoDeploy || confirmDeploy) ||
+        /\b(deploy confirmed|confirm and deploy|confirm deploy|deploy now|deploy immediately|\[CONFIRM_DEPLOY\])\b/i.test(message) ||
+        /^(yes|confirm|deploy|proceed|go ahead|apply this change)\b/i.test(message.trim());
+
+      // Strip confirmation prefix for intent parsing if present
+      const promptToParse = message
+        .replace(/^deploy confirmed:\s*/i, '')
+        .replace(/^\[CONFIRM_DEPLOY\]\s*/i, '')
+        .trim();
 
       // ── 1. Parse intent ─────────────────────────────────────────────────
       onEvent({ type: 'status', content: 'Parsing your org-change request…' });
@@ -176,7 +188,7 @@ export function createOrgEngine({ loader = defaultLoader } = {}) {
       try {
         const { aiOrchestrator: ai } = await load('services/aiOrchestrator.js');
         const { normalizeOperation } = await load('utils/aiSafety.js');
-        structuredIntent = await ai.parseIntent(message, DEFAULT_RATIONALE, MINIMAL_ORG_CONTEXT, priorContext);
+        structuredIntent = await ai.parseIntent(promptToParse || message, DEFAULT_RATIONALE, MINIMAL_ORG_CONTEXT, priorContext);
         operation = normalizeOperation(structuredIntent?.operation);
         targetComponent = structuredIntent?.targetComponent;
 
@@ -324,16 +336,45 @@ Provide a direct, clear, and actionable response. If past turns were refused by 
         if (status?.status !== 'Succeeded') {
           onEvent({
             type: 'status',
-            content: 'Dry run failed — the change was not deployed.',
+            content: 'Simulation failed — the change was not deployed.',
             card: 'dry_run',
             payload: { deploymentId: dryRunId, status: status?.status || 'Failed', success: false, errors },
           });
-          onEvent({ type: 'deploy_warning', content: 'Dry run failed — the change was not deployed.', summary: 'Dry run failed' });
-          return { role: 'assistant', content: 'Org change dry run failed.' };
+          onEvent({ type: 'deploy_warning', content: 'Simulation failed — the change was not deployed.', summary: 'Simulation failed' });
+          return { role: 'assistant', content: 'Org change simulation failed.' };
         }
+
+        // If this is an initial request without explicit deployment confirmation,
+        // pause after the simulation and ask the user to confirm.
+        if (!isExplicitDeploy) {
+          onEvent({
+            type: 'status',
+            content: 'Simulation passed — ready to deploy.',
+            card: 'dry_run',
+            payload: {
+              deploymentId: dryRunId,
+              status: 'Succeeded',
+              success: true,
+              errors: [],
+              needsConfirmation: true,
+              pendingPrompt: message,
+              operation,
+              targetComponent,
+            },
+          });
+          onEvent({
+            type: 'message',
+            content: `Pre-deployment simulation passed with 0 errors for **${targetComponent}**. Click **Confirm & Deploy to Org** below to apply this change to Salesforce.`,
+          });
+          return {
+            role: 'assistant',
+            content: `Simulation passed for ${targetComponent}. Awaiting confirmation to deploy.`,
+          };
+        }
+
         onEvent({
           type: 'status',
-          content: 'Dry run passed — safe to deploy.',
+          content: 'Simulation passed — deploying to Salesforce…',
           card: 'dry_run',
           payload: { deploymentId: dryRunId, status: 'Succeeded', success: true, errors: [] },
         });

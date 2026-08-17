@@ -428,6 +428,17 @@ export default function ChatPage() {
     [appendMessage, attachment, input, isBuilding, org, safePin, agentsUnavailable, readiness]
   );
 
+  useEffect(() => {
+    const handleConfirm = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      if (typeof customEvent.detail === 'string') {
+        startChat(customEvent.detail, 'org_change');
+      }
+    };
+    window.addEventListener('orgforge:confirm-deploy', handleConfirm);
+    return () => window.removeEventListener('orgforge:confirm-deploy', handleConfirm);
+  }, [startChat]);
+
   const stopChat = () => {
     abortRef.current?.abort();
     setIsBuilding(false);

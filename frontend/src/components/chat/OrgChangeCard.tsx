@@ -446,6 +446,30 @@ export default function OrgChangeCard({ msg }: { msg: ChatMessage }) {
                 ))}
               </ul>
             )}
+
+            {/* Interactive Confirmation Action Bar */}
+            {!isDeploy && Boolean(p.needsConfirmation) && success && (
+              <div className="mt-3 pt-3 border-t border-emerald-200/60 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>0 Conflicts. Ready to apply to your org.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const promptStr = typeof p.pendingPrompt === 'string' ? p.pendingPrompt : '';
+                    const confirmText = promptStr
+                      ? `Deploy confirmed: ${promptStr}`
+                      : 'Yes, deploy this change to Salesforce.';
+                    window.dispatchEvent(new CustomEvent('orgforge:confirm-deploy', { detail: confirmText }));
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-blue text-white text-xs font-bold shadow-soft hover:bg-brand-blue-hover transition-all cursor-pointer active:scale-[0.98]"
+                >
+                  <Rocket className="w-3.5 h-3.5" />
+                  <span>Confirm &amp; Deploy to Org</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
