@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "node --test --test-reporter spec 'src/**/*.test.js' 'scripts/**/*.test.mjs'"
+    "test": "node --test --test-reporter spec 'src/**/*.test.js' 'scripts/**/*.test.mjs'",
+    "ai:nightly": "node scripts/runNightlyAi.mjs"
   },
   "dependencies": {
     "@orgforge/ai": "0.1.0",

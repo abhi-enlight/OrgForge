@@ -173,4 +173,13 @@ The frontend is a Next.js 16 web application with server-side proxying and Tailw
 
 4. **Verify Background Workers:**
    - In Render logs for `orgforge-api`, verify that BullMQ workers have started:
-     `[workers] started 4 BullMQ workers (indexOrg, dependencyGraph, pollDeployment, selfImprovement, sessionCleanup)`
+     `[workers] started 5 BullMQ workers (indexOrg, dependencyGraph, pollDeployment, selfImprovement, sessionCleanup)`
+   - Verify the repeatable nightly schedule registration:
+     `Scheduled nightly self-improvement job (02:00 daily).`
+
+5. **Test Nightly AI Self-Improvement:**
+   - Run the on-demand CLI test to verify Gemini failure analysis and lesson persistence:
+     ```bash
+     npm run ai:nightly
+     ```
+   - For full configuration and customization options, see the [Nightly AI Guide](docs/setup/nightly_ai_setup.md).

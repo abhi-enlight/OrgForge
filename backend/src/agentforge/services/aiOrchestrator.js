@@ -4,9 +4,22 @@ import { generateMockData } from './mockDataGenerator.js'
 import { testAgent } from './agentTester.js'
 import 'dotenv/config';
 
-// Inert fallbacks for retired legacy services (superseded by @orgforge/ai)
+// Dynamic lesson reader from orgforge.ai_lessons for the self-improvement loop
 const saveLog = async () => {};
-const fetchActiveLessons = async () => [];
+const fetchActiveLessons = async () => {
+  try {
+    const { supabaseAdmin } = await import('../../lib/supabaseClients.js');
+    const { data: lessons, error } = await supabaseAdmin
+      .from('ai_lessons')
+      .select('lesson_text')
+      .eq('active', true)
+      .limit(20);
+    if (error || !lessons) return [];
+    return lessons.map((l) => ({ rule: l.lesson_text }));
+  } catch (err) {
+    return [];
+  }
+};
 const analyzeSingleFailure = async () => null;
 
 
@@ -971,7 +984,7 @@ class ConversationManager {
       const lessons = await fetchActiveLessons();
       if (lessons.length > 0) {
         const lessonText = lessons
-          .map((l, i) => `${i + 1}. [${l.topic}] ${l.rule}`)
+          .map((l, i) => `${i + 1}. ${l.topic ? `[${l.topic}] ` : ''}${l.rule || l.lesson_text}`)
           .join('\n');
         fullSystemInstruction += `\n\n## LEARNED LESSONS FROM PAST FAILURES (MANDATORY — apply these rules)\nThese rules were generated from real deployment errors. You MUST follow them:\n${lessonText}`;
         console.log(`[LOG_SERVICE] Injected ${lessons.length} lesson(s) into system prompt.`);

@@ -19,7 +19,8 @@
     "dev:web": "npm run dev --workspace=@orgforge/web",
     "build:web": "npm run build --workspace=@orgforge/web",
     "lint:web": "npm run lint --workspace=@orgforge/web",
-    "typecheck:web": "npm run typecheck --workspace=@orgforge/web"
+    "typecheck:web": "npm run typecheck --workspace=@orgforge/web",
+    "ai:nightly": "npm run ai:nightly --workspace=@orgforge/api"
   },
   "engines": {
     "node": ">=20"

@@ -27,6 +27,7 @@ Welcome to the documentation for **OrgForge** — the unified platform combining
 
 ### 🔧 Setup & Deployment (`docs/setup/`)
 - [`deployment.md`](./setup/deployment.md) — Comprehensive production deployment runbook (Vercel, Render, Supabase, Redis).
+- [`nightly_ai_setup.md`](./setup/nightly_ai_setup.md) — Nightly AI Judge & Self-Improvement setup, BullMQ scheduler, and CLI guide.
 - [`packaged_eca_setup.md`](./setup/packaged_eca_setup.md) — Installing the OrgForge Connector package (install links, access grants, verification, troubleshooting).
 - [`github_app_setup.md`](./setup/github_app_setup.md) — GitHub App setup guide for automated git audit trail logging.
 

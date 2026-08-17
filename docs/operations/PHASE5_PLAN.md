@@ -21,11 +21,11 @@
 
 > D5 discipline: the legacy apps stay deployed and serving until sign-off; nothing is dropped until two full release cycles after its replacement is proven. **Rollback is always available**: flip the flag off / revert the 301 — legacy is untouched.
 
-### Stage 0 — Deploy unified app with flags off (no behavior change)
+### Stage 0 — Unified app live (legacy targets stopped)
 
-- [ ] Deploy `frontend` (Vercel) + unified API (Render) to prod domains, flags **off**: `ORGFORGE_UNIFIED_FRONTEND=off`, `ORGFORGE_UNIFIED_API=on` (capability routers), `ORGFORGE_MOUNT_AGENTFORGE=on` (keep `/api/auth` + `/api/org` aliases live for the legacy frontends).
+- [x] Stop legacy frontend + API deploys (**done 2026-08-14** — old prod targets are dark; legacy sibling repos archived to `/Users/abhi/Enlight/archive/`).
+- [x] Remove legacy compat aliases and transition middleware (`/api/auth` and `/api/org` routes deleted from backend; `express-session` removed).
 - [ ] Verify `/api/v1/health` + `/api/v1/health/db` healthy on the prod origin; smoke `/login` → 3-step onboarding on the new domain.
-- [ ] Leave legacy deploy targets untouched.
 
 ### Stage 1 — Internal canary (week 1)
 
@@ -35,7 +35,7 @@
 
 ### Stage 2 — Friendly-customer canary + 2-week soak
 
-- [ ] Add **2 friendly customers** to the flag; keep everyone else on the legacy apps (they're still deployed).
+- [ ] Add **2 friendly customers** to the flag.
 - [ ] 2-week soak with daily metric review (§3).
 - [ ] Weekly sign-off checkpoint; anything red → rollback (flag off) and fix.
 
@@ -46,7 +46,7 @@
 
 ### Stage 4 — Cutover (301s) & decommission (§4)
 
-- [ ] Point old domains at the new app with **301s, verified atomically with DNS** (D5 — no window where an old URL 404s). **Urgent now:** the legacy deploys are already stopped, so old origins currently serve nothing — verify the new domain end-to-end and land the 301s.
+- [ ] Point old domains at the new app with **301s, verified atomically with DNS** (D5 — no window where an old URL 404s). Since legacy deploys are stopped, landing the 301s ensures old bookmarks cleanly redirect to the unified app.
 - [ ] Run the §4 retirement checklist; sign off; only then drop legacy schema (S-8).
 
 ---
@@ -65,7 +65,7 @@
 | **Engagement** | chat turns/user/day; `DELETE /chat/:contextId` (Stop & reset / Clear) usage; capability chip usage | trending up, no regressions |
 | **Data growth sanity** | `forge.ai_logs`, `routing_log`, `chat_sessions`, `diagnostics`, `agents` row counts | no runaway loops |
 
-> Note: the plan's legacy **AI Judge nightly** (`/internal/run-ai-judge`) is **not carried** into the unified API (contract §3.1: planned V7 endpoints not ported). During the transition it keeps running in the legacy process; decide its fate (port as a OrgForge internal cron or retire) before legacy decommission.
+> **Nightly AI Self-Improvement & Judge (Implemented):** The unified self-improvement engine is implemented in `backend/src/lib/selfImprovement.js` and runs nightly at 02:00 via BullMQ (`selfImprovementJob.js`). It clusters error signatures from `orgforge.ai_logs` across both Agentforce agent builds and OrgForge org changes, prompts Gemini Flash to synthesize actionable architectural rules (deduplicated against existing rules), and inserts them into `orgforge.ai_lessons`. Both `agentEngine` (via `fetchActiveLessons`) and `orgEngine` dynamically inject these active lessons into their generation prompts.
 
 ---
 

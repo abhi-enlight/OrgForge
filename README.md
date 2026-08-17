@@ -48,6 +48,7 @@ npm run dev                 # starts BOTH: API on :3001 + web on :3000 (concurre
 npm run dev:api             # API only (:3001, capability flags on)
 npm run dev:web             # web only (:3000)
 npm test                    # runs all package tests (workspaces)
+npm run ai:nightly          # run Nightly AI self-improvement analysis on-demand
 ```
 
 `npm run dev` uses `concurrently` — prefixed logs (`[backend]` / `[frontend]`),
