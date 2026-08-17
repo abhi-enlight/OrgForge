@@ -1,0 +1,32 @@
+name: Nightly AI Self-Improvement
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Runs at 02:00 UTC every day
+  workflow_dispatch:     # Allows manual on-demand execution from GitHub Actions UI
+
+jobs:
+  self-improvement:
+    name: Run Nightly AI Failure Judge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Execute Self-Improvement Analysis
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-pro-preview' }}
+          JUDGE_MODEL: ${{ vars.JUDGE_MODEL || 'gemini-3.7-flash' }}
+        run: node backend/scripts/runNightlyAi.mjs

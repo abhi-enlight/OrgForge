@@ -59,18 +59,45 @@ The Nightly AI engine requires the following environment variables (set in `back
 
 ---
 
-## 3. Automated Scheduling (BullMQ)
+## 3. How to Automatically Run This
 
-The engine is scheduled as a repeatable job via BullMQ v5 when the backend boots with `ORGFORGE_UNIFIED_API=on`:
+There are three ways to run the Nightly AI self-improvement process automatically:
+
+### Option A: Built-in BullMQ Worker (Default / In-Process)
+When the backend API is running 24/7 on Render or a persistent server (`ORGFORGE_UNIFIED_API=on` and `REDIS_URL` configured), BullMQ registers a repeatable job at boot:
 - **Queue Name:** `orgforge-self-improvement`
 - **Cron Schedule:** `0 2 * * *` (02:00 UTC daily)
 - **Worker:** [`backend/src/orgforge/jobs/selfImprovementJob.js`](../../backend/src/orgforge/jobs/selfImprovementJob.js)
 - **Core Engine:** [`backend/src/lib/selfImprovement.js`](../../backend/src/lib/selfImprovement.js)
 
-When starting the backend API service, you will see in the startup logs:
+When starting the backend API service, the startup logs will output:
 ```
 Scheduled nightly self-improvement job (02:00 daily).
 ```
+*No external cron daemon or setup is required if your backend is running.*
+
+---
+
+### Option B: GitHub Actions Scheduled Cron (Serverless & Free — Recommended)
+If you don't keep an always-on Redis worker or want an independent, serverless trigger, a pre-configured GitHub Actions workflow is provided in [`.github/workflows/nightly-ai.yml`](../../.github/workflows/nightly-ai.yml).
+
+1. In your GitHub Repository, go to **Settings** -> **Secrets and variables** -> **Actions**.
+2. Under **Repository secrets**, add:
+   - `NEXT_PUBLIC_SUPABASE_URL`: `https://<your-project>.supabase.co`
+   - `SUPABASE_SERVICE_ROLE_KEY`: `eyJhbGciOi...`
+   - `GOOGLE_AI_API_KEY`: `AIzaSy...`
+3. The workflow will automatically trigger every night at `02:00 UTC`.
+4. You can also manually trigger it anytime by clicking **Actions** -> **Nightly AI Self-Improvement** -> **Run workflow**.
+
+---
+
+### Option C: Render Cron Job (Managed Cloud)
+If your backend is hosted on Render and you prefer a separate isolated job:
+1. In the [Render Dashboard](https://dashboard.render.com), click **+ New** -> **Cron Job**.
+2. Connect your repository and configure:
+   - **Command:** `node backend/scripts/runNightlyAi.mjs`
+   - **Schedule:** `0 2 * * *` (Daily at 02:00 UTC)
+3. Add the environment variables from Section 2 (`GOOGLE_AI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, etc.).
 
 ---
 
