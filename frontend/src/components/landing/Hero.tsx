@@ -71,9 +71,9 @@ export function Hero() {
           </Reveal>
           <Reveal delay={0.2}>
             <p className="mt-6 max-w-md text-lg leading-relaxed text-text-secondary">
-              For Salesforce admins and release managers: build Agentforce
-              agents and make governed org changes from one conversation.
-              Every change runs behind refusal gates with a signed audit trail.
+              Build Agentforce agents, create validation rules, and update
+              permissions just by asking. Every change is simulated,
+              safety-checked, and tracked with a full audit trail.
             </p>
           </Reveal>
           <Reveal delay={0.3}>

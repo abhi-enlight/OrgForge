@@ -285,8 +285,8 @@ Provide a direct, clear, and actionable response. If past turns were refused by 
         onEvent({
           type: 'status',
           content: gateEval.gateOutcome === 'PASS'
-            ? 'All refusal gates passed.'
-            : `Blocked by ${refused.length} refusal gate${refused.length === 1 ? '' : 's'}: ${refused.map(gateCodeOf).join(', ')}.`,
+            ? 'All safety checks passed.'
+            : `${refused.length} item${refused.length === 1 ? '' : 's'} need your attention before this change can be deployed.`,
           card: 'refusal_gates',
           payload: { gateOutcome: gateEval.gateOutcome, results: gateEval.results || [] },
         });

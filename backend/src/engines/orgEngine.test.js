@@ -125,8 +125,8 @@ test('refused gates stop the pipeline before the dry run', async () => {
   const gates = events.find((e) => e.card === 'refusal_gates');
   assert.equal(gates.payload.gateOutcome, 'REFUSED');
   assert.equal(gates.payload.results[0].gateCode, 'REF-07');
-  // The card content names the offending gates (not a bare "blocked").
-  assert.match(gates.content, /REF-07/);
+  // The card content indicates items need attention.
+  assert.match(gates.content, /attention/);
   const warning = events.find((e) => e.type === 'deploy_warning');
   // The bubble enumerates the refused gates with reasons + unblock paths so
   // the chat itself states what caused the refusal.

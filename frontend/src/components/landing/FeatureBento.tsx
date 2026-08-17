@@ -13,12 +13,18 @@ import { AmbientShape } from './AmbientShape';
 import { BlueprintCorners } from './BlueprintCorners';
 import { Reveal } from './Reveal';
 
-const GATE_ROWS = [
-  { id: 'REF-01', name: 'Destructive metadata', state: 'refused' },
-  { id: 'REF-04', name: 'Critical object touched', state: 'pass' },
-  { id: 'REF-07', name: 'License unsupported', state: 'pass' },
-  { id: 'REF-09', name: 'Sandbox blocked deploy', state: 'pass' },
-] as const;
+interface GateRow {
+  id: string;
+  name: string;
+  state: 'pass' | 'refused';
+}
+
+const GATE_ROWS: GateRow[] = [
+  { id: 'Impact', name: 'Safety scan across records & workflows', state: 'pass' },
+  { id: 'Data check', name: 'Conflicting historical records found', state: 'refused' },
+  { id: 'Security', name: 'Static code analysis & safety check', state: 'pass' },
+  { id: 'Simulation', name: 'Pre-deployment schema dry run', state: 'pass' },
+];
 
 export function FeatureBento() {
   return (
@@ -62,13 +68,13 @@ export function FeatureBento() {
                   <Radar className="h-5 w-5 text-brand-blue" />
                 </div>
                 <h3 className="text-lg font-bold tracking-tight text-brand-dark">
-                  Refusal gates, not warnings
+                  Built-in safety checks, not silent errors
                 </h3>
               </div>
               <p className="mt-4 leading-relaxed text-text-secondary">
-                Ten named gates (REF-01 to REF-10) evaluate every change.
-                Destructive or high-impact work is refused with a plain-language
-                reason and a path forward.
+                Ten automated safety checks evaluate every change.
+                High-risk or conflicting operations are caught with a plain-language
+                explanation and interactive choices to proceed safely.
               </p>
               <div className="mt-5 overflow-hidden rounded-xl border border-brand-border">
                 <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 border-b border-brand-border px-4 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">

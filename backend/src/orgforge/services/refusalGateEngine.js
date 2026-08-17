@@ -61,13 +61,13 @@ export class RefusalGateEngine {
       if (impactData?.integrationImpact?.analysisComplete === false) {
         reasons.push(`Integration scan incomplete${impactData.integrationImpact.reason ? ` (${impactData.integrationImpact.reason})` : ''}`);
       }
-      const detail = reasons.length > 0 ? reasons.join('. ') : (impactData?.error || 'Incomplete blast radius data');
+      const detail = reasons.length > 0 ? reasons.join('. ') : (impactData?.error || 'Incomplete safety scan data');
       return {
         gateCode: 'REF-01',
         outcome: 'REFUSED',
-        plainLanguageReason: `Impact analysis failed or returned incomplete data: ${detail}.`,
-        missingEvidence: 'Complete blast radius data across dependencies, data, and permissions.',
-        unblockPath: 'Retry impact analysis or verify Salesforce API permissions.'
+        plainLanguageReason: `Impact analysis could not be fully completed: ${detail}.`,
+        missingEvidence: 'Complete safety scan across org dependencies, data, and permissions.',
+        unblockPath: 'Retry the safety scan or verify Salesforce API permissions.'
       };
     }
     return { gateCode: 'REF-01', outcome: 'PASS' };
@@ -75,7 +75,13 @@ export class RefusalGateEngine {
 
   _evaluateRef02(deployDryRunData) {
     if (deployDryRunData?.componentFailures?.length > 0) {
-      return { gateCode: 'REF-02', outcome: 'REFUSED', plainLanguageReason: 'Metadata dry-run failed.', missingEvidence: 'Successful checkOnly deployment.', unblockPath: 'Fix metadata errors.' };
+      return {
+        gateCode: 'REF-02',
+        outcome: 'REFUSED',
+        plainLanguageReason: 'Simulation failed: The change could not be validated against your org schema.',
+        missingEvidence: 'Successful checkOnly deployment test.',
+        unblockPath: 'Review schema errors or retry with adjusted configuration.'
+      };
     }
     return { gateCode: 'REF-02', outcome: 'PASS' };
   }
@@ -85,13 +91,13 @@ export class RefusalGateEngine {
       // Name the offending rules so the operator knows exactly what to fix
       // (e.g. "ApexSOQLInjection, AvoidHardcodedCredentials").
       const rules = [...new Set((codeAnalyzerData.violations || []).map(v => v.rule))];
-      const detail = rules.length > 0 ? rules.join(', ') : 'unknown rule';
+      const detail = rules.length > 0 ? rules.join(', ') : 'security check';
       return {
         gateCode: 'REF-03',
         outcome: 'REFUSED',
-        plainLanguageReason: `Generated Apex violates blocking static-analysis rules: ${detail}.`,
-        missingEvidence: 'Clean code analyzer report.',
-        unblockPath: 'Regenerate with secure templates or fix the flagged violations, then re-run the evaluation.'
+        plainLanguageReason: `Security scan flagged blocking issues in generated code: ${detail}.`,
+        missingEvidence: 'Clean code security analyzer report.',
+        unblockPath: 'Regenerate with secure templates or fix the flagged violations, then re-run.'
       };
     }
     return { gateCode: 'REF-03', outcome: 'PASS' };
@@ -99,14 +105,26 @@ export class RefusalGateEngine {
 
   _evaluateRef04(operation, approverIdentity) {
     if (operation && operation.includes('PERMISSION') && !approverIdentity) {
-      return { gateCode: 'REF-04', outcome: 'REFUSED', plainLanguageReason: 'Permission changes require an approver.', missingEvidence: 'approverIdentity is absent.', unblockPath: 'Provide approver email.' };
+      return {
+        gateCode: 'REF-04',
+        outcome: 'REFUSED',
+        plainLanguageReason: 'Permission changes require manager approval before deployment.',
+        missingEvidence: 'Approver email address is required.',
+        unblockPath: 'Provide an approver email in your message.'
+      };
     }
     return { gateCode: 'REF-04', outcome: 'PASS' };
   }
 
   _evaluateRef05(dataImpact) {
     if (dataImpact?.violatingRecordsCount > 0) {
-      return { gateCode: 'REF-05', outcome: 'REFUSED', plainLanguageReason: `${dataImpact.violatingRecordsCount} existing records violate this rule.`, missingEvidence: 'Zero violating records.', unblockPath: 'Clean up data before deploying.' };
+      return {
+        gateCode: 'REF-05',
+        outcome: 'REFUSED',
+        plainLanguageReason: `${dataImpact.violatingRecordsCount} existing record(s) conflict with this rule and would be blocked.`,
+        missingEvidence: 'Zero existing records conflicting with rule criteria.',
+        unblockPath: 'Update conflicting records in Salesforce or adjust the rule criteria.'
+      };
     }
     return { gateCode: 'REF-05', outcome: 'PASS' };
   }
@@ -116,28 +134,52 @@ export class RefusalGateEngine {
     // 'DELETE' string — match the prefix so the gate can actually fire.
     const isDestructive = typeof operation === 'string' && operation.startsWith('DELETE');
     if (isDestructive && !rollbackAcknowledged) {
-      return { gateCode: 'REF-06', outcome: 'REFUSED', plainLanguageReason: 'Destructive changes cannot be rolled back without acknowledgement.', missingEvidence: 'Rollback acknowledgement.', unblockPath: 'Acknowledge irreversible change.' };
+      return {
+        gateCode: 'REF-06',
+        outcome: 'REFUSED',
+        plainLanguageReason: 'This change permanently deletes components and cannot be automatically rolled back.',
+        missingEvidence: 'Explicit confirmation of irreversible deletion.',
+        unblockPath: 'Reply "I acknowledge and confirm deletion" to proceed.'
+      };
     }
     return { gateCode: 'REF-06', outcome: 'PASS' };
   }
 
   _evaluateRef07(orgType, productionMode) {
     if (orgType === 'production' && !productionMode) {
-      return { gateCode: 'REF-07', outcome: 'REFUSED', plainLanguageReason: 'Cannot deploy to production without production mode enabled.', missingEvidence: 'Production mode flag.', unblockPath: 'Enable production mode.' };
+      return {
+        gateCode: 'REF-07',
+        outcome: 'REFUSED',
+        plainLanguageReason: 'Cannot deploy to production without production mode enabled.',
+        missingEvidence: 'Production deployment authorization.',
+        unblockPath: 'Enable production mode in Settings or test in a Sandbox first.'
+      };
     }
     return { gateCode: 'REF-07', outcome: 'PASS' };
   }
 
   _evaluateRef08(targetComponentNamespace) {
     if (targetComponentNamespace && targetComponentNamespace !== '') {
-      return { gateCode: 'REF-08', outcome: 'REFUSED', plainLanguageReason: 'Cannot modify managed package components.', missingEvidence: 'Component must be unpackaged.', unblockPath: 'Select unmanaged component.' };
+      return {
+        gateCode: 'REF-08',
+        outcome: 'REFUSED',
+        plainLanguageReason: 'Cannot modify managed package components (they are locked by the vendor).',
+        missingEvidence: 'Target component must be an unmanaged custom component.',
+        unblockPath: 'Select an unmanaged custom component to modify.'
+      };
     }
     return { gateCode: 'REF-08', outcome: 'PASS' };
   }
 
   _evaluateRef09(skillsLockHashValid) {
     if (skillsLockHashValid === false) {
-      return { gateCode: 'REF-09', outcome: 'REFUSED', plainLanguageReason: 'Skill definition hash drifted from skills-lock.json.', missingEvidence: 'Matching skill hash.', unblockPath: 'Update skills-lock.json.' };
+      return {
+        gateCode: 'REF-09',
+        outcome: 'REFUSED',
+        plainLanguageReason: 'System rule definitions drifted from skills-lock.json.',
+        missingEvidence: 'Matching verified skill configuration.',
+        unblockPath: 'Update skills-lock.json in your repository or re-sync.'
+      };
     }
     return { gateCode: 'REF-09', outcome: 'PASS' };
   }

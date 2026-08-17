@@ -27,7 +27,7 @@ const STAGES = [
   {
     icon: BadgeCheck,
     title: 'Review and ship',
-    body: 'Check the impact, approve the gates, and deploy. Every change lands with a signed audit record.',
+    body: 'Review the safety impact, confirm any clarifications, and deploy with one click. Every change is recorded in your audit log.',
   },
 ] as const;
 

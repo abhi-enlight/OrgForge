@@ -59,18 +59,18 @@ export function Capabilities() {
                 <GitBranch className="h-5 w-5 text-brand-blue" />
               </div>
               <h3 className="mt-6 text-xl font-bold tracking-tight text-brand-dark">
-                Governed org changes
+                Safe org updates
               </h3>
               <p className="mt-3 leading-relaxed text-text-secondary">
-                Add fields, validation rules, or layouts through a governed
-                pipeline: intent, impact analysis, refusal gates, dry-run, then
-                a signed deploy with an audit record.
+                Add fields, validation rules, or permission sets safely:
+                impact analysis, automated safety checks, and simulation test
+                runs before deploying to your org.
               </p>
               <div className="mt-auto flex items-start gap-2.5 pt-6">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-pass" />
                 <p className="text-sm text-text-secondary">
-                  Ten refusal gates before anything ships. Every record
-                  HMAC-signed for the trail.
+                  10 built-in safety guardrails protect your data and prevent
+                  unexpected disruptions.
                 </p>
               </div>
             </article>

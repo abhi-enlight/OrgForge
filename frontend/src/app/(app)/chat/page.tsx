@@ -27,7 +27,7 @@ import StarterCards from '@/components/chat/StarterCards';
 import PackageRequiredGate from '@/components/org/PackageRequiredGate';
 
 const GREETING =
-  "Hi, I'm OrgForge, your Salesforce copilot. Ask me to **build or update an agent**, or to make a **governed org change** (validation rules, permission sets, fields).";
+  "Hi, I'm OrgForge 👋 Tell me what you'd like to do — build an agent, add a rule, update permissions, or make changes to your Salesforce org.";
 
 // Answers to the agent's clarifying questions. Rendered as quick-reply
 // buttons under an agent question, and each one is sent PINNED to the agent

@@ -6,7 +6,7 @@ const STARTERS = [
   {
     id: 'customer-support',
     title: 'Customer Support Agent',
-    description: 'Build an automated agent that handles FAQs, order issues, and account inquiries.',
+    description: 'Create an automated assistant to handle FAQs, look up orders, and answer customer questions.',
     prompt:
       'Build a Customer Support Agent that handles customer inquiries, FAQs, order status checks, and account updates in my org.',
     icon: Headset,
@@ -23,33 +23,33 @@ const STARTERS = [
   },
   {
     id: 'validation-rule',
-    title: 'Add a validation rule',
-    description: 'Governed org change: a rule that rejects invalid data at save time.',
+    title: 'Require Business Case on $1M+ Deals',
+    description: 'Add a safety rule on Opportunities that checks deal size before closing.',
     prompt:
       'Add a validation rule to the Opportunity object that prevents closing deals above $1M without an approved business case.',
     icon: ShieldCheck,
-    kind: 'org_change',
+    kind: 'org_update',
   },
   {
     id: 'field-permissions',
-    title: 'Permission set update',
-    description: 'Governed org change: adjust field-level security on a permission set.',
+    title: 'Grant Support Team Field Access',
+    description: 'Create a permission set giving your support team access to Case Status.',
     prompt:
-      "Create a permission set assignment giving my support team read-write access to the Case Status field, then show me the blast radius.",
+      'Create a permission set giving my support team read-write access to the Case Status field.',
     icon: Workflow,
-    kind: 'org_change',
+    kind: 'org_update',
   },
 ];
 
 /**
- * Empty-state starter prompts (Agentforge convention, extended with
- * org-change examples so both engines are one click away).
+ * Empty-state starter prompts — simple, clear, and business-focused.
  */
 export default function StarterCards({ onPick }: { onPick: (prompt: string) => void }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
       {STARTERS.map((card) => {
         const Icon = card.icon;
+        const isAgent = card.kind === 'agent';
         return (
           <button
             key={card.id}
@@ -66,11 +66,11 @@ export default function StarterCards({ onPick }: { onPick: (prompt: string) => v
               </span>
               <span
                 className={`ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
-                  card.kind === 'agent' ? 'bg-brand-blue-light text-brand-blue' : 'bg-emerald-50 text-emerald-600'
+                  isAgent ? 'bg-brand-blue-light text-brand-blue' : 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
                 }`}
               >
                 <Bot className="w-2.5 h-2.5" />
-                {card.kind === 'agent' ? 'Agent' : 'Org change'}
+                {isAgent ? 'Agent' : 'Org Update'}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 leading-snug line-clamp-2">{card.description}</p>

@@ -13,7 +13,7 @@ import { Footer } from '@/components/landing/Footer';
 export const metadata: Metadata = {
   title: 'OrgForge: One copilot for your whole Salesforce org',
   description:
-    'For Salesforce admins and release managers: build and deploy Agentforce agents in natural language, and make governed org changes behind refusal gates with a signed audit trail.',
+    'For Salesforce teams: build Agentforce agents in natural language and make safe, automated org changes with built-in guardrails and complete audit history.',
 };
 
 export default function LandingPage() {
