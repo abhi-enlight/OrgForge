@@ -48,7 +48,27 @@ export class RefusalGateEngine {
     // blast-radius dimension (dependency / data / permission / integration)
     // failed to run. Passing on an incomplete brief would violate Hard Rule 2.
     if (!impactData || impactData.error || impactData.analysisComplete === false) {
-      return { gateCode: 'REF-01', outcome: 'REFUSED', plainLanguageReason: 'Impact analysis failed or returned incomplete data.', missingEvidence: 'Complete blast radius data.', unblockPath: 'Retry impact analysis.' };
+      const reasons = [];
+      if (impactData?.dependencyImpact?.analysisComplete === false) {
+        reasons.push(`Dependency analysis incomplete${impactData.dependencyImpact.reason ? ` (${impactData.dependencyImpact.reason})` : ''}`);
+      }
+      if (impactData?.dataImpact?.analysisComplete === false) {
+        reasons.push(`Data violation scan incomplete${impactData.dataImpact.reason ? ` (${impactData.dataImpact.reason})` : ''}`);
+      }
+      if (impactData?.permissionImpact?.analysisComplete === false) {
+        reasons.push(`Permission impact scan incomplete${impactData.permissionImpact.reason ? ` (${impactData.permissionImpact.reason})` : ''}`);
+      }
+      if (impactData?.integrationImpact?.analysisComplete === false) {
+        reasons.push(`Integration scan incomplete${impactData.integrationImpact.reason ? ` (${impactData.integrationImpact.reason})` : ''}`);
+      }
+      const detail = reasons.length > 0 ? reasons.join('. ') : (impactData?.error || 'Incomplete blast radius data');
+      return {
+        gateCode: 'REF-01',
+        outcome: 'REFUSED',
+        plainLanguageReason: `Impact analysis failed or returned incomplete data: ${detail}.`,
+        missingEvidence: 'Complete blast radius data across dependencies, data, and permissions.',
+        unblockPath: 'Retry impact analysis or verify Salesforce API permissions.'
+      };
     }
     return { gateCode: 'REF-01', outcome: 'PASS' };
   }
@@ -123,8 +143,29 @@ export class RefusalGateEngine {
   }
 
   _evaluateRef10(ambiguities) {
-    if (ambiguities?.length > 0) {
-      return { gateCode: 'REF-10', outcome: 'REFUSED', plainLanguageReason: 'Unresolved ambiguities in intent.', missingEvidence: 'Clear intent.', unblockPath: 'Clarify intent.' };
+    if (Array.isArray(ambiguities) && ambiguities.length > 0) {
+      const details = ambiguities
+        .map(a => {
+          if (typeof a === 'string') return a;
+          if (a && typeof a === 'object') {
+            const parts = [a.title, a.desc].filter(Boolean);
+            return parts.length > 0 ? parts.join(': ') : JSON.stringify(a);
+          }
+          return String(a);
+        })
+        .join('; ');
+
+      const suggestion = (typeof ambiguities[0] === 'object' && (ambiguities[0]?.title || ambiguities[0]?.desc))
+        ? (ambiguities[0].title || ambiguities[0].desc)
+        : 'Specify target fields or validation formula criteria';
+
+      return {
+        gateCode: 'REF-10',
+        outcome: 'REFUSED',
+        plainLanguageReason: `Unresolved ambiguities in intent: ${details}`,
+        missingEvidence: `Clarification for: ${details}`,
+        unblockPath: `Clarify intent by specifying your preference (e.g. "${suggestion}").`
+      };
     }
     return { gateCode: 'REF-10', outcome: 'PASS' };
   }

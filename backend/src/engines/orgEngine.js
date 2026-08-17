@@ -133,11 +133,15 @@ export function createOrgEngine({ loader = defaultLoader } = {}) {
 
   const gap = (onEvent, stage, action) => (err) => {
     const reason = err?.message || String(err);
-    onEvent({ type: 'status', content: `${action}: ${reason}` });
+    const isApiKeyError = reason.includes('GOOGLE_AI_API_KEY') || reason.includes('API_KEY');
+    const intro = isApiKeyError
+      ? 'The org-change pipeline needs the AI generator (GOOGLE_AI_API_KEY) to parse and scope your request'
+      : action;
+    onEvent({ type: 'status', content: `${intro}: ${reason}` });
     onEvent({
       type: 'deploy_warning',
-      content: `${action}. The pipeline stopped before any deployment: ${reason}`,
-      summary: `${stage} unavailable`,
+      content: isApiKeyError ? `${intro}. The pipeline stopped before any deployment: ${reason}` : reason,
+      summary: isApiKeyError ? `${stage} unavailable` : `${stage} error`,
     });
     return { role: 'assistant', content: `${stage} step unavailable.` };
   };
@@ -175,18 +179,35 @@ export function createOrgEngine({ loader = defaultLoader } = {}) {
         structuredIntent = await ai.parseIntent(message, DEFAULT_RATIONALE, MINIMAL_ORG_CONTEXT, priorContext);
         operation = normalizeOperation(structuredIntent?.operation);
         targetComponent = structuredIntent?.targetComponent;
-        if (!operation || operation === 'UNKNOWN') {
-          const err = new Error('Intent could not be mapped to a supported operation. Please rephrase the request.');
-          err.status = 400;
-          throw err;
-        }
-        if (!targetComponent) {
-          const err = new Error('Intent is missing a target component. Please clarify the target metadata.');
+
+        if (!operation || operation === 'UNKNOWN' || !targetComponent) {
+          // If the message is a conversational query or follow-up (e.g. "what now?", "why was it refused?"),
+          // provide a helpful conversational response rather than a pipeline error.
+          if (typeof ai?.generateContent === 'function') {
+            try {
+              const sysPrompt = `You are OrgForge, an expert Salesforce copilot assisting with org changes, validation rules, custom fields, objects, and governance refusal gates.
+The user sent a conversational message or follow-up question in the context of an org-change session.
+${priorContext ? `Prior Conversation Context:\n${priorContext}\n` : ''}
+Provide a direct, clear, and actionable response. If past turns were refused by refusal gates (e.g., REF-01 or REF-10), explain what happened in simple terms and give the user the exact prompt they should type next to unblock the change (e.g. specifying the exact field name or criteria).`;
+
+              const reply = await ai.generateContent(`User: ${message}`, sysPrompt);
+              if (reply && reply.trim()) {
+                onEvent({ type: 'message', content: reply.trim() });
+                return { role: 'assistant', content: reply.trim() };
+              }
+            } catch (explainErr) {
+              console.warn('Conversational follow-up reply failed:', explainErr.message);
+            }
+          }
+
+          const err = new Error(
+            'Could not map this message to a Salesforce metadata operation. Try asking: "Add a validation rule to Opportunity...", "Create a custom field on Account...", or "Create a permission set...".'
+          );
           err.status = 400;
           throw err;
         }
       } catch (err) {
-        return gap(onEvent, 'Intent parsing', 'The org-change pipeline needs the AI generator (GOOGLE_AI_API_KEY) to parse and scope your request')(err);
+        return gap(onEvent, 'Intent parsing', 'The org-change pipeline could not parse your request')(err);
       }
 
       // ── 2. Generate the artifact ───────────────────────────────────────
