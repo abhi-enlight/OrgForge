@@ -216,12 +216,22 @@ class ImpactAnalyzer {
           accessToken,
           instanceUrl,
           'SELECT Id, DeveloperName FROM ConnectedApp LIMIT 200'
-        ),
+        ).catch((err) => {
+          if (err.message?.includes('INVALID_TYPE') || err.message?.includes('sObject type') || err.response?.status === 400) {
+            return [];
+          }
+          throw err;
+        }),
         this.client.queryToolingAll(
           accessToken,
           instanceUrl,
           'SELECT Id, DeveloperName FROM NamedCredential LIMIT 200'
-        )
+        ).catch((err) => {
+          if (err.message?.includes('INVALID_TYPE') || err.message?.includes('sObject type') || err.response?.status === 400) {
+            return [];
+          }
+          throw err;
+        })
       ]);
 
       return {
@@ -248,30 +258,26 @@ class ImpactAnalyzer {
   }
 
   _generateSummaryNarrative(parsedIntent, classification, dependencyImpact, dataImpact, permissionImpact) {
-    const targetComp = parsedIntent?.targetComponent || 'target metadata component';
-    const opType = parsedIntent?.operation ? parsedIntent.operation.toLowerCase().replace(/_/g, ' ') : 'modification';
+    const targetComp = parsedIntent?.targetComponent || 'target object';
 
-    let paragraph = `Impact analysis for the proposed ${opType} on "${targetComp}" indicates a ${classification.toUpperCase()} blast radius risk across your Salesforce organization. `;
-
+    let summary = `This change on ${targetComp} is classified as ${classification} Risk. `;
     if (dataImpact?.violatingRecordsCount > 0) {
-      paragraph += `Crucially, ${dataImpact.violatingRecordsCount} existing database record(s) currently contain data that conflicts with this change rule (triggering governance gate REF-05). `;
+      summary += `${dataImpact.violatingRecordsCount} existing record(s) currently violate this rule. `;
     } else {
-      paragraph += `No existing database records violate this proposed schema modification rule. `;
+      summary += `No existing records violate this rule. `;
     }
 
     if (dependencyImpact?.referencingComponentsCount > 0) {
-      paragraph += `There are ${dependencyImpact.referencingComponentsCount} active metadata component(s) (Flows, Apex triggers/classes, or Page Layouts) directly referencing "${targetComp}". `;
+      summary += `${dependencyImpact.referencingComponentsCount} existing automation(s) or layout(s) reference this component. `;
     } else {
-      paragraph += `Zero active metadata dependencies were detected for this component in the Tooling API. `;
+      summary += `No other workflows or automations are affected. `;
     }
 
     if (permissionImpact?.affectedUsersCount > 0) {
-      paragraph += `This modification affects access controls for ${permissionImpact.affectedUsersCount} assigned user profile(s).`;
-    } else {
-      paragraph += `No user permission set assignments are disrupted.`;
+      summary += `${permissionImpact.affectedUsersCount} user(s) will have their permissions updated.`;
     }
 
-    return paragraph;
+    return summary.trim();
   }
 }
 

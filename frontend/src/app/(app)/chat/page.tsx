@@ -244,6 +244,20 @@ export default function ChatPage() {
     []
   );
 
+  useEffect(() => {
+    const handleFill = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      if (typeof customEvent.detail === 'string') {
+        setInput(customEvent.detail);
+        setTimeout(() => {
+          textareaRef.current?.focus();
+        }, 50);
+      }
+    };
+    window.addEventListener('orgforge:fill-prompt', handleFill);
+    return () => window.removeEventListener('orgforge:fill-prompt', handleFill);
+  }, []);
+
   const appendMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => [...prev, msg]);
   }, []);
