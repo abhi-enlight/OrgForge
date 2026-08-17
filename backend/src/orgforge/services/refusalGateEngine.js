@@ -144,27 +144,33 @@ export class RefusalGateEngine {
 
   _evaluateRef10(ambiguities) {
     if (Array.isArray(ambiguities) && ambiguities.length > 0) {
-      const details = ambiguities
-        .map(a => {
-          if (typeof a === 'string') return a;
-          if (a && typeof a === 'object') {
-            const parts = [a.title, a.desc].filter(Boolean);
-            return parts.length > 0 ? parts.join(': ') : JSON.stringify(a);
-          }
-          return String(a);
-        })
-        .join('; ');
+      const options = ambiguities.map((a, i) => {
+        if (typeof a === 'object' && a !== null) {
+          return {
+            id: a.id || `opt${i + 1}`,
+            title: a.title || `Option ${i + 1}`,
+            desc: a.desc || '',
+            recommended: Boolean(a.recommended || i === 0),
+          };
+        }
+        return {
+          id: `opt${i + 1}`,
+          title: String(a),
+          desc: '',
+          recommended: i === 0,
+        };
+      });
 
-      const suggestion = (typeof ambiguities[0] === 'object' && (ambiguities[0]?.title || ambiguities[0]?.desc))
-        ? (ambiguities[0].title || ambiguities[0].desc)
-        : 'Specify target fields or validation formula criteria';
+      const titles = options.map((o, idx) => `Option ${idx + 1} (${o.title})`).join(' vs ');
+      const suggestion = options[0]?.title || 'Option 1';
 
       return {
         gateCode: 'REF-10',
         outcome: 'REFUSED',
-        plainLanguageReason: `Unresolved ambiguities in intent: ${details}`,
-        missingEvidence: `Clarification for: ${details}`,
-        unblockPath: `Clarify intent by specifying your preference (e.g. "${suggestion}").`
+        plainLanguageReason: `Clarification needed: Choose between ${titles}`,
+        missingEvidence: 'Your preferred option for rule enforcement.',
+        unblockPath: `Select ${suggestion} on the card above, or specify your preference in chat.`,
+        options,
       };
     }
     return { gateCode: 'REF-10', outcome: 'PASS' };

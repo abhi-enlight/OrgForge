@@ -78,13 +78,16 @@ class ImpactAnalyzer {
     // "Object.Field"; whole components by their API name).
     let records = [];
     let nameQueryFailed = false;
+    let isFatalError = false;
     try {
       records = await this.client.queryToolingAll(accessToken, instanceUrl, nameQuery);
     } catch (err) {
-      // Name-based filtering may be unsupported in some orgs — fall through to
-      // the ID-based path rather than giving up.
       nameQueryFailed = true;
-      console.warn('Dependency name query failed (will retry by ID):', err.message);
+      const msg = err?.message || '';
+      if (msg.includes('INVALID_SESSION_ID') || msg.includes('API_DISABLED') || msg.includes('401')) {
+        isFatalError = true;
+      }
+      console.warn('Dependency name query failed (will retry by ID):', msg);
     }
 
     if (nameQueryFailed || !Array.isArray(records) || records.length === 0) {
@@ -107,13 +110,18 @@ class ImpactAnalyzer {
           );
         }
       } catch (idErr) {
-        console.warn('Dependency ID lookup failed (non-fatal):', idErr.message);
+        const msg = idErr?.message || '';
+        if (msg.includes('INVALID_SESSION_ID') || msg.includes('API_DISABLED') || msg.includes('401')) {
+          isFatalError = true;
+        }
+        console.warn('Dependency ID lookup failed (non-fatal):', msg);
       }
     }
 
-    // 3. Only the ID fallback failing (on top of the name query) is treated as
-    // incomplete — a definitive empty name-based answer is a complete answer.
-    const analysisComplete = !nameQueryFailed || records.length > 0;
+    // 3. If an auth/session error occurred, analysis is incomplete.
+    // Otherwise, a definitive empty result (such as standard objects like Opportunity
+    // not present in the Tooling Dependency table) is a complete answer (0 dependencies).
+    const analysisComplete = !isFatalError;
 
     return {
       referencingComponentsCount: Array.isArray(records) ? records.length : 0,

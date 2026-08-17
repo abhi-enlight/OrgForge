@@ -29,6 +29,7 @@ interface GateResult {
   plainLanguageReason?: string;
   missingEvidence?: string;
   unblockPath?: string;
+  options?: Array<{ id?: string; title: string; desc?: string; recommended?: boolean }>;
 }
 
 interface ArtifactFile {
@@ -66,6 +67,40 @@ function formatOpName(op?: string): string {
   return `${prefix}${clean.split('_').map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ')}`;
 }
 
+function parseAmbiguityOptions(text?: string): Array<{ title: string; desc: string; prompt: string }> {
+  if (!text) return [];
+  const rawParts = text
+    .replace(/^Clarification needed:\s*Choose between\s*/i, '')
+    .replace(/^Unresolved ambiguities in intent:\s*/i, '')
+    .split(/\s+vs\s+|;\s*|(?=Option \d+:)/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const options: Array<{ title: string; desc: string; prompt: string }> = [];
+
+  for (const part of rawParts) {
+    const clean = part.replace(/^Option \d+\s*\(|\)$/g, '').trim();
+    const colonIdx = clean.indexOf(':');
+    if (colonIdx > 0 && colonIdx < 80) {
+      const title = clean.slice(0, colonIdx).trim();
+      const desc = clean.slice(colonIdx + 1).trim();
+      options.push({
+        title,
+        desc,
+        prompt: `Please apply ${title}: ${desc}`,
+      });
+    } else if (clean.length > 3) {
+      options.push({
+        title: clean,
+        desc: '',
+        prompt: `Please proceed with: ${clean}`,
+      });
+    }
+  }
+
+  return options;
+}
+
 function Pill({
   children,
   tone = 'muted',
@@ -94,34 +129,6 @@ function radiusTone(r?: string): 'warning' | 'info' | 'pass' | 'muted' {
   if (s.includes('medium')) return 'info';
   if (s.includes('low')) return 'pass';
   return 'muted';
-}
-
-function parseAmbiguityOptions(text?: string): Array<{ title: string; desc: string; prompt: string }> {
-  if (!text) return [];
-  // Split on semicolons or option delimiters
-  const segments = text.split(/;\s*|(?=Option \d+:)/i).map((s) => s.trim()).filter(Boolean);
-  const options: Array<{ title: string; desc: string; prompt: string }> = [];
-
-  for (const seg of segments) {
-    const colonIdx = seg.indexOf(':');
-    if (colonIdx > 0 && colonIdx < 80) {
-      const title = seg.slice(0, colonIdx).replace(/^(Unresolved ambiguities in intent:\s*|Option \d+:\s*)/i, '').trim();
-      const desc = seg.slice(colonIdx + 1).trim();
-      options.push({
-        title,
-        desc,
-        prompt: `Let's proceed with: "${title}". ${desc}`,
-      });
-    } else if (seg.length > 5 && !seg.toLowerCase().startsWith('unresolved ambiguities')) {
-      options.push({
-        title: seg,
-        desc: '',
-        prompt: `Let's proceed with: ${seg}`,
-      });
-    }
-  }
-
-  return options;
 }
 
 /**
@@ -293,7 +300,15 @@ export default function OrgChangeCard({ msg }: { msg: ChatMessage }) {
                   const gateCode = g.gateCode || 'REF-10';
                   const friendlyTitle = GATE_TITLES[gateCode] || 'Attention Required';
                   const isAmbiguity = gateCode === 'REF-10';
-                  const options = isAmbiguity ? parseAmbiguityOptions(g.plainLanguageReason) : [];
+                  const options = (g.options && g.options.length > 0)
+                    ? g.options.map((o) => ({
+                        title: o.title,
+                        desc: o.desc || '',
+                        prompt: `Please apply ${o.title}${o.desc ? `: ${o.desc}` : ''}`.trim(),
+                      }))
+                    : isAmbiguity
+                      ? parseAmbiguityOptions(g.plainLanguageReason)
+                      : [];
 
                   return (
                     <div
